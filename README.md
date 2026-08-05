@@ -1,40 +1,99 @@
-# Medical QA Bot (MediQA Bot)
+# Medical QA Bot (MediQA Bot API)
 
-A Medical Question-Answering assistant using **Qdrant Hybrid Search** (Dense PubMedBERT + Sparse BM25) and **Groq LLMs** (`llama-3.1-8b-instant`).
+A Production-Ready Medical Question-Answering API using **Qdrant Hybrid Search** (Dense PubMedBERT + FastEmbed BM25) and **LangGraph Self-Corrective RAG (CRAG)** with **Gemini 2.5 Flash** / OpenAI.
 
-## Features
-- **Dense Vector Search**: Powered by `NeuML/pubmedbert-base-embeddings` to capture conceptual medical meaning.
-- **Sparse Vector Search**: Powered by `BM25Encoder` to capture exact medical terminology and rare conditions.
-- **Reciprocal Rank Fusion (RRF)**: Merges dense & sparse results in Qdrant for optimal relevance.
-- **Disk Persistence**: Saves Qdrant collections persistently in `./qdrant_storage`.
-- **Tool-Augmented Medical Agent**: Uses Groq LLMs with native function calling to retrieve context and answer complex health questions.
+---
 
-## Setup & Prerequisites
+## ⚡ Self-Corrective RAG (CRAG) Workflow & Action Tracing
 
-1. **Environment Variables**  
-   Ensure your `.env` file contains your Groq API key and Qdrant settings:
-   ```env
-   GROQ_API_KEY=your_groq_api_key
-   QDRANT_HOST=localhost
-   QDRANT_PORT=6333
-   ```
+```
+                  [START]
+                     │
+                     ▼
+           ┌───────────────────┐
+           │   Generate Query  │ (Context-Aware Query Formulation)
+           └─────────┬─────────┘
+                     │
+                     ▼
+           ┌───────────────────┐
+           │  Hybrid Retrieve  │ (Qdrant Dense PubMedBERT + FastEmbed BM25 + RRF)
+           └─────────┬─────────┘
+                     │
+                     ▼
+        ┌─────────────────────────┐
+        │ Grade Document Relevance│ (Evaluates retrieved passages)
+        └────────────┬────────────┘
+                     │
+     ┌───────────────┴───────────────┐
+     │ Relevant?                     │ Irrelevant?
+     ▼                               ▼
+┌──────────────────┐       ┌────────────────────┐
+│  Generate Answer │       │ Query Rewrite Node │ (Rewrites query & retries search)
+└────────┬─────────┘       └─────────┬──────────┘
+         │                           │
+         ▼                           └─────────► (Loop back to Retrieve)
+┌────────────────────────────────┐
+│ Grade Answer (Self-Correction) │ (Validates Groundedness & Relevance)
+└────────┬───────────────────────┘
+         │
+  ┌──────┴──────┐
+  │ Grounded &  │
+  │ Useful?     ▼
+  └──────────► [END] (Returns Validated Evidence-Based Answer)
+```
 
-2. **Start Qdrant Vector Database (Docker)**  
-   ```bash
-   docker run -d \
-     --name qdrant \
-     -p 6333:6333 \
-     -p 6334:6334 \
-     -v "$(pwd)/qdrant_storage:/qdrant/storage" \
-     qdrant/qdrant:latest
-   ```
+### 🗣️ Multi-Turn Follow-Up Questions (`session_id`)
+LangGraph maintains conversation state per session using `MemorySaver()`. To ask a follow-up question (e.g. *"What are the treatments for it?"*), pass the same `session_id` in your request. LangGraph resolves pronouns and context automatically!
 
-3. **Install Dependencies**  
+---
+
+## 📁 Project Architecture
+
+```
+MediQA Bot/
+├── app/
+│   ├── config.py             # Centralized settings & environment loading
+│   ├── schemas.py            # Pydantic request & response models (includes execution_trace & session_id)
+│   ├── services/
+│   │   ├── search_service.py # Qdrant vector DB, PubMedBERT + FastEmbed BM25, RRF search
+│   │   └── agent_service.py  # LangGraph CRAG state machine + MemorySaver + 429 LLM Fallback
+│   └── routers/
+│       ├── health.py         # GET /api/v1/health
+│       ├── search.py         # POST /api/v1/search
+│       ├── qa.py             # POST /api/v1/ask (LangGraph CRAG with Session Memory)
+│       └── ingest.py         # POST /api/v1/ingest
+├── main.py                   # Clean FastAPI application entrypoint
+├── dataset/                  # Medical QA dataset (medquad.csv)
+└── README.md
+```
+
+---
+
+## 🚀 API Endpoints
+
+| Method | Endpoint | Description |
+| :--- | :--- | :--- |
+| **`GET`** | `/` | API Root & Documentation URL |
+| **`GET`** | `/api/v1/health` | Health Check (Qdrant connection & dataset count) |
+| **`POST`** | `/api/v1/search` | Execute Hybrid Vector Search (Dense + BM25 + RRF) |
+| **`POST`** | `/api/v1/ask` | Ask AI Agent (LangGraph CRAG + Session Memory + Action Tracing) |
+| **`POST`** | `/api/v1/ingest` | Trigger dataset indexing into Qdrant |
+
+---
+
+## 🛠️ Quick Start
+
+1. **Install Dependencies**
    ```bash
    uv sync
    ```
 
-## Usage
+2. **Start FastAPI Application**
+   ```bash
+   python main.py
+   # Or with Uvicorn:
+   uvicorn main:app --reload --port 8000
+   ```
 
-- **Interactive Jupyter Notebook**: Open `Hybrid Search.ipynb` to run data ingestion, vector indexing, hybrid search comparisons, and the AI Medical Agent loop.
-- **CLI Application**: Run `python main.py` to start an interactive terminal QA session.
+3. **Interactive Swagger Documentation**
+   Navigate to [http://localhost:8000/docs](http://localhost:8000/docs) in your browser.

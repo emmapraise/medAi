@@ -1,32 +1,43 @@
 import os
-import json
-import pandas as pd
-from dotenv import load_dotenv
-from qdrant_client import QdrantClient
-from sentence_transformers import SentenceTransformer
-from openai import OpenAI
+import uvicorn
+from contextlib import asynccontextmanager
+from fastapi import FastAPI
 
-load_dotenv()
+from app.config import settings
+from app.services.search_service import search_engine
+from app.services.agent_service import agent_service
+from app.routers import health, search, qa, ingest
 
-def main():
-    print("=========================================")
-    print("      Medical QA Bot (MediQA Bot)       ")
-    print("=========================================")
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Initialize Search Engine & AI Agent on application startup
+    search_engine.initialize()
+    agent_service.initialize()
+    yield
+    print("[App] Shutting down Medical QA Service...")
 
-    QDRANT_HOST = os.getenv("QDRANT_HOST", "localhost")
-    QDRANT_PORT = int(os.getenv("QDRANT_PORT", 6333))
-    QDRANT_URL = os.getenv("QDRANT_URL", f"http://{QDRANT_HOST}:{QDRANT_PORT}")
+app = FastAPI(
+    title=settings.PROJECT_NAME,
+    description="Modular & Optimized FastAPI for Medical Question-Answering powered by Qdrant Hybrid Search & Gemini LLMs.",
+    version=settings.VERSION,
+    lifespan=lifespan
+)
 
-    try:
-        client = QdrantClient(url=QDRANT_URL, check_compatibility=False, timeout=5)
-        cols = [c.name for c in client.get_collections().collections]
-        print(f"Connected to Qdrant at {QDRANT_URL}. Collections: {cols}")
-    except Exception as e:
-        print(f"Could not connect to Qdrant server at {QDRANT_URL}: {e}")
-        print("Please ensure Docker Qdrant is running.")
-        return
+# Include Routers with API Prefix /api/v1
+app.include_router(health.router, prefix="/api/v1", tags=["Health"])
+app.include_router(search.router, prefix="/api/v1", tags=["Search"])
+app.include_router(qa.router, prefix="/api/v1", tags=["Agent QA"])
+app.include_router(ingest.router, prefix="/api/v1", tags=["Admin Ingestion"])
 
-    print("\nReady! For the full hybrid search and interactive AI agent loop, open 'Hybrid Search.ipynb'.")
+@app.get("/", tags=["Root"])
+def root():
+    return {
+        "title": settings.PROJECT_NAME,
+        "version": settings.VERSION,
+        "docs_url": "/docs",
+        "status": "online"
+    }
 
 if __name__ == "__main__":
-    main()
+    port = int(os.getenv("PORT", 8000))
+    uvicorn.run("main:app", host="0.0.0.0", port=port, reload=True)
