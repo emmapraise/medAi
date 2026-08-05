@@ -20,10 +20,19 @@ def ask_medical_agent(payload: AskRequest):
         
         return AskResponse(
             question=payload.question,
+            generated_query=result["generated_query"],
             answer=result["answer"],
             session_id=result["session_id"],
+            is_relevant=result["is_relevant"],
+            is_grounded=result["is_grounded"],
+            is_useful=result["is_useful"],
             execution_trace=result["execution_trace"],
             model_used=model_name,
+            latency_ms=result["latency_ms"],
+            prompt_tokens=result["prompt_tokens"],
+            completion_tokens=result["completion_tokens"],
+            total_tokens=result["total_tokens"],
+            estimated_cost_usd=result["estimated_cost_usd"],
             turns_executed=result["turns_executed"]
         )
     except HTTPException as he:

@@ -25,10 +25,19 @@ class AskRequest(BaseModel):
 
 class AskResponse(BaseModel):
     question: str
+    generated_query: str
     answer: str
     session_id: str
+    is_relevant: str
+    is_grounded: str
+    is_useful: str
     execution_trace: List[str]
     model_used: str
+    latency_ms: float
+    prompt_tokens: int
+    completion_tokens: int
+    total_tokens: int
+    estimated_cost_usd: float
     turns_executed: int
 
 class IngestResponse(BaseModel):

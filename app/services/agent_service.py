@@ -1,5 +1,6 @@
 import os
 import json
+import time
 import re
 from typing import List, Dict, Any, Optional, TypedDict
 from dotenv import load_dotenv
@@ -11,6 +12,7 @@ from langgraph.checkpoint.memory import MemorySaver
 
 from app.config import settings
 from app.services.search_service import search_engine
+from app.services.analytics_service import analytics_service
 
 # =====================================================================
 # LangGraph State Schema with Execution Tracing & Conversation History
@@ -27,9 +29,11 @@ class GraphState(TypedDict):
     is_useful: str
     execution_trace: List[str]
     history: List[Dict[str, str]]
+    prompt_tokens: int
+    completion_tokens: int
 
 # =====================================================================
-# Medical Agent Service (LangGraph CRAG + MemorySaver + Fallback)
+# Medical Agent Service (LangGraph CRAG + MemorySaver + DB Logging)
 # =====================================================================
 
 class MedicalAgentService:
@@ -66,42 +70,71 @@ class MedicalAgentService:
             if not self.llm:
                 self.llm = self.fallback_llm
 
+        analytics_service.initialize_db()
         self.build_graph()
 
-    def invoke_llm(self, prompt: str) -> str:
+    def invoke_llm(self, prompt: str) -> tuple[str, str, int, int]:
+        model_used = settings.DEFAULT_MODEL
         try:
             res = self.llm.invoke(prompt)
-            return str(res.content).strip()
+            content = str(res.content).strip()
+            
+            p_tokens = len(prompt) // 4
+            c_tokens = len(content) // 4
+            if hasattr(res, "response_metadata") and isinstance(res.response_metadata, dict):
+                token_usage = res.response_metadata.get("token_usage") or res.response_metadata.get("usage", {})
+                if token_usage:
+                    p_tokens = token_usage.get("prompt_tokens", p_tokens)
+                    c_tokens = token_usage.get("completion_tokens", c_tokens)
+
+            return content, model_used, p_tokens, c_tokens
         except Exception as e:
             err_msg = str(e).lower()
             if ("429" in err_msg or "resource_exhausted" in err_msg or "rate" in err_msg) and self.fallback_llm and self.llm != self.fallback_llm:
                 print("[MedicalAgent] Gemini rate limited (429). Falling back to OpenAI gpt-4o-mini...")
+                model_used = "gpt-4o-mini"
                 res = self.fallback_llm.invoke(prompt)
-                return str(res.content).strip()
+                content = str(res.content).strip()
+                p_tokens = len(prompt) // 4
+                c_tokens = len(content) // 4
+                if hasattr(res, "response_metadata") and isinstance(res.response_metadata, dict):
+                    token_usage = res.response_metadata.get("token_usage") or res.response_metadata.get("usage", {})
+                    if token_usage:
+                        p_tokens = token_usage.get("prompt_tokens", p_tokens)
+                        c_tokens = token_usage.get("completion_tokens", c_tokens)
+                return content, model_used, p_tokens, c_tokens
             raise e
 
     def build_graph(self):
         # -------------------------------------------------------------
-        # Node 1: Formulate Search Query (Context-Aware for Follow-ups)
+        # Node 1: Formulate Search Query
         # -------------------------------------------------------------
         def generate_query_node(state: GraphState) -> Dict[str, Any]:
             question = state["question"]
             history = state.get("history", [])
             trace = list(state.get("execution_trace", []))
+            p_tok = state.get("prompt_tokens", 0)
+            c_tok = state.get("completion_tokens", 0)
             
             history_str = ""
             if history:
                 history_str = "Conversation History:\n" + "\n".join([f"{h['role']}: {h['content']}" for h in history]) + "\n\n"
 
             prompt = f"{history_str}User Question: '{question}'\nFormulate a standalone medical search query using clear medical terms. Output only the query text."
-            raw_res = self.invoke_llm(prompt)
+            raw_res, model, p, c = self.invoke_llm(prompt)
             query = raw_res.strip().strip('"')
             
-            log_msg = f"[Action: Generate Query] Formulated search query: '{query}'"
+            log_msg = f"[Action: Generate Query] Formulated query: '{query}'"
             print(f"[LangGraph Trace] {log_msg}")
             trace.append(log_msg)
             
-            return {"query": query, "execution_trace": trace, "retry_count": state.get("retry_count", 0)}
+            return {
+                "query": query,
+                "execution_trace": trace,
+                "retry_count": state.get("retry_count", 0),
+                "prompt_tokens": p_tok + p,
+                "completion_tokens": c_tok + c
+            }
 
         # -------------------------------------------------------------
         # Node 2: Retrieve Documents (Qdrant Hybrid Search)
@@ -126,6 +159,8 @@ class MedicalAgentService:
             question = state["question"]
             docs = state["documents"]
             trace = list(state.get("execution_trace", []))
+            p_tok = state.get("prompt_tokens", 0)
+            c_tok = state.get("completion_tokens", 0)
             
             if not docs:
                 log_msg = "[Action: Grade Documents] No passages found -> Relevance: NO"
@@ -135,32 +170,45 @@ class MedicalAgentService:
                 
             doc_texts = "\n\n".join([f"Q: {d['question']}\nA: {d['answer']}" for d in docs])
             prompt = f"Given question '{question}', evaluate if these medical passages contain relevant info:\n\n{doc_texts}\n\nRespond strictly 'YES' or 'NO'."
-            raw_res = self.invoke_llm(prompt).upper()
-            is_rel = "yes" if "YES" in raw_res else "no"
+            raw_res, model, p, c = self.invoke_llm(prompt)
+            is_rel = "yes" if "YES" in raw_res.upper() else "no"
             
             log_msg = f"[Action: Grade Documents] Relevance Grade: {is_rel.upper()}"
             print(f"[LangGraph Trace] {log_msg}")
             trace.append(log_msg)
             
-            return {"is_relevant": is_rel, "execution_trace": trace}
+            return {
+                "is_relevant": is_rel,
+                "execution_trace": trace,
+                "prompt_tokens": p_tok + p,
+                "completion_tokens": c_tok + c
+            }
 
         # -------------------------------------------------------------
-        # Node 4: Rewrite Query (if documents were irrelevant)
+        # Node 4: Rewrite Query
         # -------------------------------------------------------------
         def rewrite_query_node(state: GraphState) -> Dict[str, Any]:
             question = state["question"]
             current_retry = state.get("retry_count", 0) + 1
             trace = list(state.get("execution_trace", []))
+            p_tok = state.get("prompt_tokens", 0)
+            c_tok = state.get("completion_tokens", 0)
             
             prompt = f"Rewrite '{question}' into an improved medical query using alternative key terminology."
-            raw_res = self.invoke_llm(prompt)
+            raw_res, model, p, c = self.invoke_llm(prompt)
             query = raw_res.strip().strip('"')
             
             log_msg = f"[Action: Rewrite Query #{current_retry}] Alternative query: '{query}'"
             print(f"[LangGraph Trace] {log_msg}")
             trace.append(log_msg)
             
-            return {"query": query, "retry_count": current_retry, "execution_trace": trace}
+            return {
+                "query": query,
+                "retry_count": current_retry,
+                "execution_trace": trace,
+                "prompt_tokens": p_tok + p,
+                "completion_tokens": c_tok + c
+            }
 
         # -------------------------------------------------------------
         # Node 5: Generate Answer
@@ -170,6 +218,8 @@ class MedicalAgentService:
             docs = state["documents"]
             history = state.get("history", [])
             trace = list(state.get("execution_trace", []))
+            p_tok = state.get("prompt_tokens", 0)
+            c_tok = state.get("completion_tokens", 0)
             
             history_str = ""
             if history:
@@ -187,40 +237,50 @@ Retrieved Context:
 
 Provide a clear, accurate, evidence-based answer. Conclude by asking if the user has follow-up questions:
 """
-            res = self.invoke_llm(prompt)
+            res, model, p, c = self.invoke_llm(prompt)
             
             log_msg = f"[Action: Generate Answer] Synthesized candidate answer ({len(res)} chars)"
             print(f"[LangGraph Trace] {log_msg}")
             trace.append(log_msg)
             
-            return {"generation": res, "execution_trace": trace}
+            return {
+                "generation": res,
+                "execution_trace": trace,
+                "prompt_tokens": p_tok + p,
+                "completion_tokens": c_tok + c
+            }
 
         # -------------------------------------------------------------
-        # Node 6: Grade Generation (Self-Correction & Hallucination Check)
+        # Node 6: Grade Generation
         # -------------------------------------------------------------
         def grade_generation_node(state: GraphState) -> Dict[str, Any]:
             question = state["question"]
             generation = state["generation"]
             docs = state["documents"]
             trace = list(state.get("execution_trace", []))
+            p_tok = state.get("prompt_tokens", 0)
+            c_tok = state.get("completion_tokens", 0)
             
             doc_context = "\n\n".join([f"Q: {d['question']}\nA: {d['answer']}" for d in docs])
             
-            res_grounded = self.invoke_llm(f"Is this answer supported by context?\nContext: {doc_context}\nAnswer: {generation}\nRespond 'YES' or 'NO'.").upper()
-            is_grounded = "yes" if "YES" in res_grounded else "no"
+            res_grounded, m1, p1, c1 = self.invoke_llm(f"Is this answer supported by context?\nContext: {doc_context}\nAnswer: {generation}\nRespond 'YES' or 'NO'.")
+            is_grounded = "yes" if "YES" in res_grounded.upper() else "no"
             
-            res_useful = self.invoke_llm(f"Does this answer user question: '{question}'?\nAnswer: {generation}\nRespond 'YES' or 'NO'.").upper()
-            is_useful = "yes" if "YES" in res_useful else "no"
+            res_useful, m2, p2, c2 = self.invoke_llm(f"Does this answer user question: '{question}'?\nAnswer: {generation}\nRespond 'YES' or 'NO'.")
+            is_useful = "yes" if "YES" in res_useful.upper() else "no"
             
             log_msg = f"[Action: Grade Generation] Grounded={is_grounded.upper()}, Useful={is_useful.upper()}"
             print(f"[LangGraph Trace] {log_msg}")
             trace.append(log_msg)
             
-            return {"is_grounded": is_grounded, "is_useful": is_useful, "execution_trace": trace}
+            return {
+                "is_grounded": is_grounded,
+                "is_useful": is_useful,
+                "execution_trace": trace,
+                "prompt_tokens": p_tok + p1 + p2,
+                "completion_tokens": c_tok + c1 + c2
+            }
 
-        # -------------------------------------------------------------
-        # Conditional Edge Handlers
-        # -------------------------------------------------------------
         def decide_to_generate(state: GraphState) -> str:
             if state["is_relevant"] == "yes" or state.get("retry_count", 0) >= 2:
                 return "generate_answer"
@@ -233,9 +293,6 @@ Provide a clear, accurate, evidence-based answer. Conclude by asking if the user
                 return END
             return "generate_answer"
 
-        # -------------------------------------------------------------
-        # Graph Assembly & MemorySaver Checkpointer
-        # -------------------------------------------------------------
         builder = StateGraph(GraphState)
 
         builder.add_node("generate_query", generate_query_node)
@@ -255,9 +312,10 @@ Provide a clear, accurate, evidence-based answer. Conclude by asking if the user
         builder.add_conditional_edges("grade_generation", decide_to_finish, {END: END, "generate_answer": "generate_answer"})
 
         self.graph = builder.compile(checkpointer=self.memory)
-        print("[MedicalAgent] LangGraph Self-Corrective RAG with MemorySaver & LLM Fallback compiled successfully.")
+        print("[MedicalAgent] LangGraph CRAG with MemorySaver & PostgreSQL Logging compiled successfully.")
 
     def run_qa(self, question: str, session_id: str = "default_session", model: Optional[str] = None, max_turns: int = 5) -> Dict[str, Any]:
+        start_time = time.perf_counter()
         config = {"configurable": {"thread_id": session_id}}
         
         existing_state = self.graph.get_state(config)
@@ -276,15 +334,50 @@ Provide a clear, accurate, evidence-based answer. Conclude by asking if the user
             "question": question,
             "retry_count": 0,
             "execution_trace": [],
-            "history": history
+            "history": history,
+            "prompt_tokens": 0,
+            "completion_tokens": 0
         }
         
         final_state = self.graph.invoke(initial_state, config=config)
+        end_time = time.perf_counter()
+        latency_ms = (end_time - start_time) * 1000.0
+
+        model_name = model or settings.DEFAULT_MODEL
+        p_tokens = final_state.get("prompt_tokens", 0)
+        c_tokens = final_state.get("completion_tokens", 0)
+        
+        # Log entry to PostgreSQL
+        db_log = analytics_service.log_query(
+            session_id=session_id,
+            question=question,
+            generated_query=final_state.get("query", ""),
+            retrieved_docs_count=len(final_state.get("documents", [])),
+            is_relevant=final_state.get("is_relevant", "unknown"),
+            is_grounded=final_state.get("is_grounded", "unknown"),
+            is_useful=final_state.get("is_useful", "unknown"),
+            turns_executed=final_state.get("retry_count", 0) + 1,
+            execution_trace=final_state.get("execution_trace", []),
+            answer=final_state.get("generation", ""),
+            model_used=model_name,
+            latency_ms=latency_ms,
+            prompt_tokens=p_tokens,
+            completion_tokens=c_tokens
+        )
         
         return {
             "answer": final_state.get("generation", "Could not generate a validated answer."),
+            "generated_query": final_state.get("query", ""),
+            "is_relevant": final_state.get("is_relevant", "unknown"),
+            "is_grounded": final_state.get("is_grounded", "unknown"),
+            "is_useful": final_state.get("is_useful", "unknown"),
             "execution_trace": final_state.get("execution_trace", []),
             "session_id": session_id,
+            "latency_ms": round(latency_ms, 2),
+            "prompt_tokens": p_tokens,
+            "completion_tokens": c_tokens,
+            "total_tokens": p_tokens + c_tokens,
+            "estimated_cost_usd": db_log.estimated_cost_usd,
             "turns_executed": final_state.get("retry_count", 0) + 1
         }
 
