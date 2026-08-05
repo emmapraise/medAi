@@ -11,3 +11,4 @@ wheels/
 .env
 dataset/
 qdrant_storage/
+node_modules/
