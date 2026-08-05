@@ -30,7 +30,7 @@ class RAGQueryLog(Base):
     execution_trace = Column(JSON, nullable=True)
     answer = Column(Text, nullable=True)
     model_used = Column(String, nullable=False)
-    latency_ms = Column(Float, default=0.0)
+    latency_seconds = Column(Float, default=0.0)
     prompt_tokens = Column(Integer, default=0)
     completion_tokens = Column(Integer, default=0)
     total_tokens = Column(Integer, default=0)

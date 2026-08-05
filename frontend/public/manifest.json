@@ -1,0 +1,24 @@
+{
+  "name": "MediQA Bot - AI Medical Intelligence",
+  "short_name": "MediQA AI",
+  "description": "Production-Ready Medical Question-Answering PWA with LangGraph Self-Corrective RAG, Qdrant Hybrid Search & PostgreSQL Analytics",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0a0e17",
+  "theme_color": "#00f2fe",
+  "orientation": "any",
+  "icons": [
+    {
+      "src": "/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}

@@ -33,7 +33,7 @@ class AskResponse(BaseModel):
     is_useful: str
     execution_trace: List[str]
     model_used: str
-    latency_ms: float
+    latency_seconds: float
     prompt_tokens: int
     completion_tokens: int
     total_tokens: int

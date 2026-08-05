@@ -35,7 +35,7 @@ class AnalyticsService:
         execution_trace: List[str],
         answer: str,
         model_used: str,
-        latency_ms: float,
+        latency_seconds: float,
         prompt_tokens: int = 0,
         completion_tokens: int = 0
     ) -> RAGQueryLog:
@@ -68,7 +68,7 @@ class AnalyticsService:
                 execution_trace=execution_trace,
                 answer=answer,
                 model_used=model_used,
-                latency_ms=round(latency_ms, 2),
+                latency_seconds=round(latency_seconds, 2),
                 prompt_tokens=prompt_tokens,
                 completion_tokens=completion_tokens,
                 total_tokens=total_tokens,
@@ -77,7 +77,7 @@ class AnalyticsService:
             db.add(log_entry)
             db.commit()
             db.refresh(log_entry)
-            print(f"[AnalyticsService] Query logged to PostgreSQL (id={log_entry.id}, latency={latency_ms:.1f}ms, cost=${cost:.6f}).")
+            print(f"[AnalyticsService] Query logged to PostgreSQL (id={log_entry.id}, latency={latency_seconds:.2f}s, cost=${cost:.6f}).")
             return log_entry
         except Exception as e:
             db.rollback()
@@ -91,7 +91,7 @@ class AnalyticsService:
         try:
             total_queries = db.query(func.count(RAGQueryLog.id)).scalar() or 0
             total_sessions = db.query(func.count(ConversationSession.session_id)).scalar() or 0
-            avg_latency = db.query(func.avg(RAGQueryLog.latency_ms)).scalar() or 0.0
+            avg_latency = db.query(func.avg(RAGQueryLog.latency_seconds)).scalar() or 0.0
             total_tokens = db.query(func.sum(RAGQueryLog.total_tokens)).scalar() or 0
             total_cost = db.query(func.sum(RAGQueryLog.estimated_cost_usd)).scalar() or 0.0
 
@@ -107,7 +107,7 @@ class AnalyticsService:
             return {
                 "total_queries": total_queries,
                 "total_sessions": total_sessions,
-                "avg_latency_ms": round(avg_latency, 2),
+                "avg_latency_seconds": round(avg_latency, 2),
                 "total_tokens": total_tokens,
                 "total_cost_usd": round(total_cost, 6),
                 "avg_cost_per_query_usd": avg_cost_per_query,

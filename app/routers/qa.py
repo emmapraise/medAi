@@ -28,7 +28,7 @@ def ask_medical_agent(payload: AskRequest):
             is_useful=result["is_useful"],
             execution_trace=result["execution_trace"],
             model_used=model_name,
-            latency_ms=result["latency_ms"],
+            latency_seconds=result["latency_seconds"],
             prompt_tokens=result["prompt_tokens"],
             completion_tokens=result["completion_tokens"],
             total_tokens=result["total_tokens"],

@@ -40,6 +40,16 @@ class SearchEngineService:
         # FastEmbed BM25 Sparse model setup
         print("[SearchEngine] Loading FastEmbed BM25 Sparse Vectorizer (Qdrant/bm25)...")
         self.sparse_model = SparseTextEmbedding(model_name=settings.SPARSE_MODEL_NAME)
+        
+        # Auto-ingest dataset if collection does not exist
+        cols = [c.name for c in self.client.get_collections().collections]
+        if settings.COLLECTION_NAME not in cols:
+            print(f"[SearchEngine] Collection '{settings.COLLECTION_NAME}' missing. Auto-ingesting dataset...")
+            try:
+                self.ingest_dataset()
+            except Exception as ie:
+                print(f"[SearchEngine] Auto-ingestion warning: {ie}")
+
         print("[SearchEngine] Search Engine Service ready.")
 
     def encode_sparse(self, text: str) -> models.SparseVector:
@@ -50,12 +60,14 @@ class SearchEngineService:
         )
 
     def hybrid_search(self, query_text: str, top_k: int = 5) -> List[SearchResultItem]:
+        if not self.client or not self.dense_model or not self.sparse_model:
+            print("[SearchEngine] Client uninitialized. Running initialize()...")
+            self.initialize()
+
         cols = [c.name for c in self.client.get_collections().collections]
         if settings.COLLECTION_NAME not in cols:
-            raise HTTPException(
-                status_code=404, 
-                detail=f"Collection '{settings.COLLECTION_NAME}' not found in Qdrant. Call POST /api/v1/ingest first."
-            )
+            print(f"[SearchEngine] Collection missing during search. Auto-ingesting...")
+            self.ingest_dataset()
 
         query_dense = self.dense_model.encode(query_text, normalize_embeddings=True).tolist()
         query_sparse = self.encode_sparse(query_text)
