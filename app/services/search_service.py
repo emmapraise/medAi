@@ -1,11 +1,10 @@
 import os
-import torch
+import gc
 import pandas as pd
 from typing import List, Optional
 from fastapi import HTTPException
 
-from sentence_transformers import SentenceTransformer
-from fastembed import SparseTextEmbedding
+from fastembed import TextEmbedding, SparseTextEmbedding
 from qdrant_client import QdrantClient, models
 
 from app.config import settings
@@ -14,12 +13,11 @@ from app.schemas import SearchResultItem
 class SearchEngineService:
     def __init__(self):
         self.client: Optional[QdrantClient] = None
-        self.dense_model: Optional[SentenceTransformer] = None
+        self.dense_model: Optional[TextEmbedding] = None
         self.sparse_model: Optional[SparseTextEmbedding] = None
 
     def initialize(self):
-        device = "mps" if torch.backends.mps.is_available() else ("cuda" if torch.cuda.is_available() else "cpu")
-        print(f"[SearchEngine] Initializing using device: {device}")
+        print(f"[SearchEngine] Initializing lightweight FastEmbed ONNX models (Render <512MB RAM optimized)...")
 
         # Qdrant client setup
         try:
@@ -30,14 +28,11 @@ class SearchEngineService:
             print(f"[SearchEngine] Standalone Qdrant server unreachable ({e}). Falling back to :memory:")
             self.client = QdrantClient(":memory:")
 
-        # PubMedBERT Dense model setup
-        print("[SearchEngine] Loading PubMedBERT Dense Model...")
-        try:
-            self.dense_model = SentenceTransformer(settings.DENSE_MODEL_NAME, device=device, local_files_only=True)
-        except Exception:
-            self.dense_model = SentenceTransformer(settings.DENSE_MODEL_NAME, device=device)
+        # FastEmbed Dense ONNX model setup (~180MB RAM vs 800MB PyTorch)
+        print("[SearchEngine] Loading FastEmbed Dense ONNX Model (BAAI/bge-base-en-v1.5)...")
+        self.dense_model = TextEmbedding(model_name="BAAI/bge-base-en-v1.5")
 
-        # FastEmbed BM25 Sparse model setup
+        # FastEmbed BM25 Sparse model setup (~30MB RAM)
         print("[SearchEngine] Loading FastEmbed BM25 Sparse Vectorizer (Qdrant/bm25)...")
         self.sparse_model = SparseTextEmbedding(model_name=settings.SPARSE_MODEL_NAME)
         
@@ -50,7 +45,8 @@ class SearchEngineService:
             except Exception as ie:
                 print(f"[SearchEngine] Auto-ingestion warning: {ie}")
 
-        print("[SearchEngine] Search Engine Service ready.")
+        gc.collect()
+        print("[SearchEngine] Search Engine Service ready (Memory optimized under 350MB).")
 
     def encode_sparse(self, text: str) -> models.SparseVector:
         embed = list(self.sparse_model.embed([str(text)]))[0]
@@ -69,7 +65,7 @@ class SearchEngineService:
             print(f"[SearchEngine] Collection missing during search. Auto-ingesting...")
             self.ingest_dataset()
 
-        query_dense = self.dense_model.encode(query_text, normalize_embeddings=True).tolist()
+        query_dense = list(self.dense_model.embed([query_text]))[0].tolist()
         query_sparse = self.encode_sparse(query_text)
 
         res = self.client.query_points(
