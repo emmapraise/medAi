@@ -23,6 +23,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY pyproject.toml uv.lock ./
 RUN uv sync --frozen --no-cache
 
+# Pre-download & cache model weights inside container image for instant startup
+RUN uv run python -c "from sentence_transformers import SentenceTransformer; from fastembed import SparseTextEmbedding; SentenceTransformer('NeuML/pubmedbert-base-embeddings'); SparseTextEmbedding('Qdrant/bm25')"
+
 # Copy application source code and built frontend dist
 COPY app/ ./app/
 COPY main.py ./main.py
