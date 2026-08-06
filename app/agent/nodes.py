@@ -173,7 +173,7 @@ def generate_answer_node(state: GraphState) -> Dict[str, Any]:
         history_str = "Conversation History:\n" + "\n".join([f"{h['role']}: {h['content']}" for h in history]) + "\n\n"
         
     doc_context = "\n\n".join([f"Category: {d['focus_area']}\nQ: {d['question']}\nA: {d['answer']}" for d in docs])
-    prompt = f"You are a knowledgeable and compassionate Medical QA Assistant.\n{history_str}Answer the user question based strictly on the retrieved medical context below.\n\nQuestion: {question}\n\nRetrieved Context:\n{doc_context}\n\nProvide a clear, accurate, evidence-based answer. Conclude by asking if the user has follow-up questions:"
+    prompt = f"You are a knowledgeable and compassionate Medical QA Assistant.\n{history_str}Answer the user question based strictly on the retrieved medical context below.\n\nQuestion: {question}\n\nRetrieved Context:\n{doc_context}\n\nProvide a clear, accurate, evidence-based answer. Conclude by suggesting a follow up question based on question and answer given:"
     
     res, model, p, c = llm_client.invoke(prompt, temperature=0.3)
     
