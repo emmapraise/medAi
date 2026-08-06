@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { Stethoscope, UserCheck, BookOpen, BarChart3, Plus, MessageSquare, History, Download, Trash2 } from "lucide-react";
+import { Stethoscope, UserCheck, BookOpen, BarChart3, Plus, MessageSquare, History, Download, Trash2, Menu, X } from "lucide-react";
 import DoctorChat from "./components/DoctorChat";
 import HybridSearch from "./components/HybridSearch";
 import AnalyticsDashboard from "./components/AnalyticsDashboard";
@@ -10,6 +10,7 @@ export default function App() {
   const [pastSessions, setPastSessions] = useState([]);
   const [loadedHistory, setLoadedHistory] = useState([]);
   const [deferredPrompt, setDeferredPrompt] = useState(null);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   const fetchPastSessions = async () => {
     try {
@@ -43,11 +44,13 @@ export default function App() {
     setSessionId(newId);
     setLoadedHistory([]);
     setActiveTab("chat");
+    setMobileMenuOpen(false);
   };
 
   const handleSelectSession = async (sId) => {
     setSessionId(sId);
     setActiveTab("chat");
+    setMobileMenuOpen(false);
     try {
       const res = await fetch(`/api/v1/analytics/sessions/${sId}`);
       if (res.ok) {
@@ -78,6 +81,11 @@ export default function App() {
     }
   };
 
+  const handleTabChange = (tab) => {
+    setActiveTab(tab);
+    setMobileMenuOpen(false);
+  };
+
   const handleInstallPWA = () => {
     if (deferredPrompt) {
       deferredPrompt.prompt();
@@ -93,13 +101,21 @@ export default function App() {
 
   return (
     <div className="app-container">
-      <aside className="sidebar">
+      {/* Mobile Backdrop Overlay */}
+      {mobileMenuOpen && (
+        <div className="sidebar-backdrop" onClick={() => setMobileMenuOpen(false)} />
+      )}
+
+      <aside className={`sidebar ${mobileMenuOpen ? "mobile-open" : ""}`}>
         <div className="brand">
           <div className="brand-icon"><Stethoscope size={24} /></div>
           <div className="brand-text">
             <h2>MediQA<span>.AI</span></h2>
             <p>Medical Intelligence & RAG</p>
           </div>
+          <button className="mobile-close-btn" onClick={() => setMobileMenuOpen(false)}>
+            <X size={20} />
+          </button>
         </div>
 
         <button className="btn-primary" onClick={handleNewSession} style={{ justifyContent: "center", width: "100%" }}>
@@ -107,13 +123,13 @@ export default function App() {
         </button>
 
         <nav className="nav-menu">
-          <button className={`nav-item ${activeTab === "chat" ? "active" : ""}`} onClick={() => setActiveTab("chat")}>
+          <button className={`nav-item ${activeTab === "chat" ? "active" : ""}`} onClick={() => handleTabChange("chat")}>
             <UserCheck size={18} /> <span>AI Doctor Chat</span>
           </button>
-          <button className={`nav-item ${activeTab === "search" ? "active" : ""}`} onClick={() => setActiveTab("search")}>
+          <button className={`nav-item ${activeTab === "search" ? "active" : ""}`} onClick={() => handleTabChange("search")}>
             <BookOpen size={18} /> <span>Literature Search</span>
           </button>
-          <button className={`nav-item ${activeTab === "analytics" ? "active" : ""}`} onClick={() => setActiveTab("analytics")}>
+          <button className={`nav-item ${activeTab === "analytics" ? "active" : ""}`} onClick={() => handleTabChange("analytics")}>
             <BarChart3 size={18} /> <span>Performance & Costs</span>
           </button>
         </nav>
@@ -157,13 +173,19 @@ export default function App() {
 
       <main className="main-content">
         <header className="top-header">
-          <div className="header-title">
-            <h1>MediQA Assistant</h1>
-            <p>Evidence-based AI medical answering verified against clinical literature</p>
+          <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+            <button className="mobile-toggle-btn" onClick={() => setMobileMenuOpen(true)}>
+              <Menu size={22} />
+            </button>
+            <div className="header-title">
+              <h1>MediQA Assistant</h1>
+              <p>Evidence-based AI medical answering verified against clinical literature</p>
+            </div>
           </div>
           <div className="header-actions">
             <div className="session-badge">
-              <span>Active Session: {sessionId}</span>
+              <span className="desktop-session-text">Active Session: {sessionId}</span>
+              <span className="mobile-session-text">{sessionId}</span>
               <button onClick={handleNewSession} title="Start New Session"><Plus size={16} /></button>
             </div>
           </div>
