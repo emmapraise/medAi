@@ -9,11 +9,14 @@ from app.services.search_service import search_engine
 from app.services.agent_service import agent_service
 from app.routers import health, search, qa, ingest, analytics
 
+import asyncio
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     print("Starting Medical QA Server & React PWA Application...")
-    search_engine.initialize()
-    agent_service.initialize()
+    loop = asyncio.get_running_loop()
+    loop.run_in_executor(None, search_engine.initialize)
+    loop.run_in_executor(None, agent_service.initialize)
     yield
     print("Shutting down Medical QA Server...")
 
