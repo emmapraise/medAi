@@ -15,9 +15,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     && rm -rf /var/lib/apt/lists/*
 
+# Install Python dependencies
+COPY requirements.txt ./
+RUN pip install --no-cache-dir -r requirements.txt
+
 COPY app/ ./app/
 COPY main.py ./main.py
-COPY dataset/ ./dataset/
 COPY --from=frontend-builder /app/frontend/dist ./frontend/dist
 
 EXPOSE 8000
