@@ -11,10 +11,6 @@ FROM python:3.11-slim
 # Copy official uv binary from Astral
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
 
-ENV MALLOC_ARENA_MAX=2
-ENV OMP_NUM_THREADS=1
-ENV PYTHONUNBUFFERED=1
-
 WORKDIR /app
 
 # Install system dependencies
