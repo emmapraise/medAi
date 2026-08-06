@@ -19,6 +19,10 @@ class MedicalAgentService:
         print("[MedicalAgent] Modular LangGraph CRAG Workflow compiled successfully.")
 
     def run_qa(self, question: str, session_id: str = "default_session", model: Optional[str] = None, max_turns: int = 5) -> Dict[str, Any]:
+        if self.graph is None:
+            print("[MedicalAgent] Graph uninitialized. Running initialize()...")
+            self.initialize()
+
         start_time = time.perf_counter()
         config = {"configurable": {"thread_id": session_id}}
         
