@@ -61,7 +61,16 @@ def generate_query_node(state: GraphState) -> Dict[str, Any]:
 
     prompt = f"{history_str}User Question: '{question}'\nFormulate a short standalone medical search query using clear medical terms. Output ONLY the query text without any preamble."
     raw_res, model, p, c = llm_client.invoke(prompt, temperature=0.1)
-    query = raw_res.strip().strip('"').split("\n")[0]
+    
+    # Sanitize generated query from preambles or quotes
+    query = raw_res.strip().strip('"').strip("'").split("\n")[0]
+    for prefix in ["query:", "search query:", "medical query:", "here is the search query:", "here is:", "standalone query:"]:
+        if query.lower().startswith(prefix):
+            query = query[len(prefix):].strip()
+            
+    # Fallback to original user question if query formulation returned empty or invalid string
+    if not query or len(query) < 2:
+        query = question
     
     log_msg = f"[Action: Generate Query] Formulated query: '{query}'"
     print(f"[LangGraph Trace] {log_msg}")
