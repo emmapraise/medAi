@@ -173,7 +173,7 @@ def generate_answer_node(state: GraphState) -> Dict[str, Any]:
         history_str = "Conversation History:\n" + "\n".join([f"{h['role']}: {h['content']}" for h in history]) + "\n\n"
         
     doc_context = "\n\n".join([f"Category: {d['focus_area']}\nQ: {d['question']}\nA: {d['answer']}" for d in docs])
-    prompt = f"You are a knowledgeable and compassionate Medical QA Assistant.\n{history_str}Answer the user question based strictly on the retrieved medical context below.\n\nQuestion: {question}\n\nRetrieved Context:\n{doc_context}\n\nProvide a clear, accurate, evidence-based answer. Conclude naturally by directly asking a follow-up question. Do NOT include headers or labels like '**Suggested follow-up question:**' or 'Follow-up question:'."
+    prompt = f"You are a knowledgeable and compassionate Medical QA Assistant.\n{history_str}Answer the user question based strictly on the retrieved medical context below.\n\nQuestion: {question}\n\nRetrieved Context:\n{doc_context}\n\nProvide a clear, accurate, evidence-based answer. Conclude by politely asking a follow-up offer question that the user can naturally answer with 'yes', 'sure', or 'correct' (for example: 'Would you like to know more about AIDS?' or 'Would you like to learn about available treatment options?'). Do NOT include headers or labels like '**Suggested follow-up question:**' or 'Follow-up question:'."
     
     res, model, p, c = llm_client.invoke(prompt, temperature=0.3)
     
