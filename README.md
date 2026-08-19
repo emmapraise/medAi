@@ -72,8 +72,9 @@ The medical knowledge base backing MediQA Bot is built from the **MedQuAD** (Med
 1. **Self-Corrective RAG (CRAG)**: Evaluates retrieved medical passages before synthesis. If passages are irrelevant, it rewrites the search query and retries automatically.
 2. **Hallucination & Groundedness Verification**: Evaluates generated answers in parallel to verify they are strictly supported by retrieved clinical literature.
 3. **Interactive Yes/No Conversation Flow**: Prompts user with natural follow-up offers (e.g. *"Would you like to know more about treatments for HIV?"*). When the user answers with *"Yes"*, *"Sure"*, or *"Tell me more"*, the system automatically resolves the offer topic from conversation history and retrieves relevant documents.
-4. **PostgreSQL Analytics & Cost Engine**: Logs every query execution trace, token consumption, latency (ms), document relevance scores, and estimated USD cost ($).
-5. **Mobile-Responsive React PWA**: Features an offline-ready PWA with Service Worker (`sw.js`), web manifest, mobile slide-out drawer, past session drawer, copy answer button, and question editing capabilities.
+4. **PostgreSQL Analytics, Feedback & Cost Engine**: Logs every query execution trace, token consumption, latency (ms), document relevance scores, user feedback ratings (👍 / 👎), and estimated USD cost ($).
+5. **Comprehensive 5-Chart Real-Time Analytics Dashboard**: Real-time visualization of (1) Response Speed per Query, (2) Quality & Verification Breakdown, (3) Estimated Cost Trend, (4) Token Consumption Distribution, and (5) User Satisfaction Breakdown.
+6. **Mobile-Responsive React PWA with Interactive Feedback**: Features an offline-ready PWA with Service Worker (`sw.js`), web manifest, mobile slide-out drawer, past session drawer, copy answer button, question editing capabilities, and one-click user feedback.
 
 ---
 
@@ -104,6 +105,7 @@ MediQA Bot/
 │   ├── public/              # Service worker (sw.js), manifest.json, PWA icons
 │   └── index.html           # Edge-to-edge mobile PWA index
 ├── Dockerfile               # Multi-stage Dockerfile with pre-cached PubMedBERT weights
+├── docker-compose.yml       # Full-stack Docker Compose configuration (App + PostgreSQL)
 ├── pyproject.toml           # Locked UV Python dependencies
 ├── main.py                  # FastAPI application entrypoint with static PWA mounting
 └── README.md
@@ -228,17 +230,25 @@ Evaluators can verify every feature of the project using the following checks:
 | **1. Agent QA (CRAG)** | `POST /api/v1/ask`<br>`{"question": "What are the symptoms of Glaucoma?"}` | Returns evidence-based answer, PubMedBERT retrieval trace, relevance grade `YES`, and interactive follow-up question. |
 | **2. Multi-Turn "Yes" Offer** | Send `POST /api/v1/ask`<br>`{"question": "Yes, tell me more", "session_id": "same_session"}` | Formulates query from previous history topic (e.g. `Glaucoma detection methods`) and answers seamlessly. |
 | **3. Hybrid Search** | `POST /api/v1/search`<br>`{"query": "Infant hepatoblastoma"}` | Returns top 5 RRF-ranked medical passages combining PubMedBERT + BM25 score. |
-| **4. PostgreSQL Logging** | `GET /api/v1/analytics/summary` | Returns total queries count, groundedness %, relevance %, and total cost ($ USD). |
-| **5. Mobile PWA Responsiveness** | Open `http://localhost:8000` in mobile viewport (< 768px) | Slide-out mobile navigation drawer opens cleanly with dark backdrop blur. |
+| **4. PostgreSQL Logging & Feedback** | `GET /api/v1/analytics/summary`<br>`POST /api/v1/analytics/feedback` | Returns total queries count, groundedness %, relevance %, user satisfaction %, and total cost ($ USD). |
+| **5. 5-Chart Monitoring Dashboard** | Navigate to Analytics tab in UI | Renders 5 distinct charts (Speed, Quality, Cost Trend, Token Usage, User Feedback) and live audit log table. |
+| **6. Mobile PWA Responsiveness** | Open `http://localhost:8000` in mobile viewport (< 768px) | Slide-out mobile navigation drawer opens cleanly with dark backdrop blur. |
 
 ---
 
-## 🐳 Docker Deployment & GCP Cloud Run
+## 🐳 Docker Containerization & GCP Cloud Run
 
-The application is containerized and continuously deployed to **Google Cloud Run**:
-* 🌐 **Live Cloud Run URL**: **[https://medai-19247955175.europe-west1.run.app/](https://medai-19247955175.europe-west1.run.app/)**
+### Option 1: Full-Stack Docker Compose (Recommended)
+Launch the entire system — **MediQA Bot application**, **PostgreSQL database**, and **Qdrant Vector Database** — with a single command:
 
-### Local Docker Run
+```bash
+docker compose up --build
+```
+The application will be accessible immediately at `http://localhost:8000`, with Qdrant vector storage accessible at `http://localhost:6333`.
+
+---
+
+### Option 2: Standalone Docker Run
 ```bash
 # Build Docker image (Pre-caches PubMedBERT model weights inside container image)
 docker build -t mediqa-bot:latest .
@@ -250,6 +260,14 @@ docker run -p 8000:8000 \
   -e QDRANT_API_KEY="your_qdrant_key" \
   mediqa-bot:latest
 ```
+
+---
+
+### 🌐 Google Cloud Run Deployment
+The production application is continuously deployed on **Google Cloud Run**:
+* 🔗 **Live Cloud Run URL**: **[https://medai-19247955175.europe-west1.run.app/](https://medai-19247955175.europe-west1.run.app/)**
+
+> **Note on Cloud Run Deployments**: Google Cloud Run builds and deploys directly from the multi-stage [`Dockerfile`](file:///Users/emmapraise/Documents/AI%20Engineering/MediQA%20Bot/Dockerfile) (or Artifact Registry container image). The presence of `docker-compose.yml` is used for local multi-service testing and does not impact Cloud Run deployment operations.
 
 ---
 

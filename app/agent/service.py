@@ -75,6 +75,7 @@ class MedicalAgentService:
         )
         
         return {
+            "id": db_log.id,
             "answer": final_state.get("generation", "Could not generate a validated answer."),
             "generated_query": final_state.get("query", ""),
             "is_relevant": final_state.get("is_relevant", "unknown"),

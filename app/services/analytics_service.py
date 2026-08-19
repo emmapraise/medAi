@@ -86,6 +86,25 @@ class AnalyticsService:
         finally:
             db.close()
 
+    def record_feedback(self, log_id: int, feedback: str, comment: Optional[str] = None) -> bool:
+        db: Session = SessionLocal()
+        try:
+            log_entry = db.query(RAGQueryLog).filter(RAGQueryLog.id == log_id).first()
+            if not log_entry:
+                return False
+            log_entry.user_feedback = feedback
+            if comment:
+                log_entry.feedback_comment = comment
+            db.commit()
+            print(f"[AnalyticsService] User feedback '{feedback}' recorded for log_id={log_id}.")
+            return True
+        except Exception as e:
+            db.rollback()
+            print(f"[AnalyticsService Error] Failed to record feedback: {e}")
+            raise e
+        finally:
+            db.close()
+
     def get_summary(self) -> Dict[str, Any]:
         db: Session = SessionLocal()
         try:
@@ -99,9 +118,14 @@ class AnalyticsService:
             grounded_count = db.query(func.count(RAGQueryLog.id)).filter(RAGQueryLog.is_grounded == "yes").scalar() or 0
             useful_count = db.query(func.count(RAGQueryLog.id)).filter(RAGQueryLog.is_useful == "yes").scalar() or 0
 
+            positive_feedback = db.query(func.count(RAGQueryLog.id)).filter(RAGQueryLog.user_feedback == "positive").scalar() or 0
+            negative_feedback = db.query(func.count(RAGQueryLog.id)).filter(RAGQueryLog.user_feedback == "negative").scalar() or 0
+            total_feedback = positive_feedback + negative_feedback
+
             relevance_rate = round((relevant_count / total_queries * 100), 1) if total_queries > 0 else 0.0
             groundedness_rate = round((grounded_count / total_queries * 100), 1) if total_queries > 0 else 0.0
             usefulness_rate = round((useful_count / total_queries * 100), 1) if total_queries > 0 else 0.0
+            satisfaction_rate = round((positive_feedback / total_feedback * 100), 1) if total_feedback > 0 else 100.0
             avg_cost_per_query = round((total_cost / total_queries), 6) if total_queries > 0 else 0.0
 
             return {
@@ -113,7 +137,10 @@ class AnalyticsService:
                 "avg_cost_per_query_usd": avg_cost_per_query,
                 "document_relevance_rate_pct": relevance_rate,
                 "groundedness_accuracy_rate_pct": groundedness_rate,
-                "usefulness_rate_pct": usefulness_rate
+                "usefulness_rate_pct": usefulness_rate,
+                "positive_feedback_count": positive_feedback,
+                "negative_feedback_count": negative_feedback,
+                "user_satisfaction_rate_pct": satisfaction_rate
             }
         finally:
             db.close()

@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from "react";
-import { User, Bot, Send, Check, ChevronDown, Zap, Coins, DollarSign, ShieldCheck, Stethoscope, BookOpen, Copy, Edit3 } from "lucide-react";
+import { User, Bot, Send, Check, ChevronDown, Zap, Coins, DollarSign, ShieldCheck, Stethoscope, BookOpen, Copy, Edit3, ThumbsUp, ThumbsDown } from "lucide-react";
 
 export default function DoctorChat({ sessionId, loadedHistory, onMessageSent }) {
   const [messages, setMessages] = useState([
@@ -14,6 +14,7 @@ export default function DoctorChat({ sessionId, loadedHistory, onMessageSent }) 
   const [loadingStep, setLoadingStep] = useState(0);
   const [openTraceId, setOpenTraceId] = useState(null);
   const [copiedId, setCopiedId] = useState(null);
+  const [feedbackMap, setFeedbackMap] = useState({});
   const chatBottomRef = useRef(null);
 
   const loadingMessages = [
@@ -22,6 +23,23 @@ export default function DoctorChat({ sessionId, loadedHistory, onMessageSent }) 
     "Analyzing symptoms & formulating response...",
     "Fact-checking response for accuracy and safety..."
   ];
+
+  const handleFeedback = async (logId, feedbackType) => {
+    if (!logId) return;
+    setFeedbackMap((prev) => ({ ...prev, [logId]: feedbackType }));
+    try {
+      await fetch("/api/v1/analytics/feedback", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          log_id: logId,
+          feedback: feedbackType
+        })
+      });
+    } catch (err) {
+      console.error("Failed to submit feedback:", err);
+    }
+  };
 
   // Update messages when a past session is selected
   useEffect(() => {
@@ -41,6 +59,7 @@ export default function DoctorChat({ sessionId, loadedHistory, onMessageSent }) 
         });
         formatted.push({
           id: "bot-" + msg.id,
+          logId: msg.id,
           role: "bot",
           content: msg.answer,
           trace: msg.execution_trace || [],
@@ -48,6 +67,7 @@ export default function DoctorChat({ sessionId, loadedHistory, onMessageSent }) 
           tokens: msg.total_tokens,
           costUsd: msg.estimated_cost_usd,
           isGrounded: msg.is_grounded,
+          userFeedback: msg.user_feedback,
           turns: 1
         });
       });
@@ -116,6 +136,7 @@ export default function DoctorChat({ sessionId, loadedHistory, onMessageSent }) 
           ...prev,
           {
             id: "bot-" + Date.now(),
+            logId: data.id,
             role: "bot",
             content: data.answer,
             trace: data.execution_trace || [],
@@ -186,7 +207,34 @@ export default function DoctorChat({ sessionId, loadedHistory, onMessageSent }) 
               )}
 
               {msg.role === "bot" && (
-                <div style={{ display: "flex", justifyContent: "flex-end", marginTop: "8px", gap: "8px" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: "8px" }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                    {msg.logId && (
+                      <>
+                        <button
+                          type="button"
+                          className={`feedback-btn ${(feedbackMap[msg.logId] === "positive" || (!feedbackMap[msg.logId] && msg.userFeedback === "positive")) ? "active-thumb-up" : ""}`}
+                          onClick={() => handleFeedback(msg.logId, "positive")}
+                          title="Accurate and helpful"
+                        >
+                          <ThumbsUp size={12} />
+                        </button>
+                        <button
+                          type="button"
+                          className={`feedback-btn ${(feedbackMap[msg.logId] === "negative" || (!feedbackMap[msg.logId] && msg.userFeedback === "negative")) ? "active-thumb-down" : ""}`}
+                          onClick={() => handleFeedback(msg.logId, "negative")}
+                          title="Inaccurate or unhelpful"
+                        >
+                          <ThumbsDown size={12} />
+                        </button>
+                        {feedbackMap[msg.logId] && (
+                          <span style={{ fontSize: "11px", color: "var(--accent-cyan)", marginLeft: "4px" }}>
+                            Feedback saved!
+                          </span>
+                        )}
+                      </>
+                    )}
+                  </div>
                   <button
                     type="button"
                     className="action-link-btn"

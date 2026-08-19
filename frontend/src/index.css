@@ -742,3 +742,34 @@ body {
     grid-template-columns: 1fr;
   }
 }
+
+.feedback-btn {
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  color: var(--text-muted);
+  border-radius: var(--radius-sm);
+  padding: 4px 8px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s ease;
+}
+
+.feedback-btn:hover {
+  background: rgba(255, 255, 255, 0.12);
+  color: var(--text-main);
+  border-color: rgba(255, 255, 255, 0.25);
+}
+
+.feedback-btn.active-thumb-up {
+  background: rgba(0, 230, 118, 0.18);
+  border-color: #00e676;
+  color: #00e676;
+}
+
+.feedback-btn.active-thumb-down {
+  background: rgba(255, 82, 82, 0.18);
+  border-color: #ff5252;
+  color: #ff5252;
+}
