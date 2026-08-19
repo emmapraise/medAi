@@ -6,6 +6,11 @@
 [![Qdrant](https://img.shields.io/badge/Qdrant-DC2626?style=for-the-badge&logo=qdrant&logoColor=white)](https://qdrant.tech/)
 [![PyTorch](https://img.shields.io/badge/PubMedBERT-EE4C2C?style=for-the-badge&logo=pytorch&logoColor=white)](https://huggingface.co/NeuML/pubmedbert-base-embeddings)
 [![PostgreSQL](https://img.shields.io/badge/PostgreSQL-336791?style=for-the-badge&logo=postgresql&logoColor=white)](https://www.postgresql.org/)
+[![Live Demo](https://img.shields.io/badge/🚀_Live_Demo-Google_Cloud_Run-4285F4?style=for-the-badge&logo=googlecloud&logoColor=white)](https://medai-19247955175.europe-west1.run.app/)
+
+> 🚀 **Live Deployment**: **[https://medai-19247955175.europe-west1.run.app/](https://medai-19247955175.europe-west1.run.app/)**
+> 
+> **Reviewers & Evaluators:** The application is fully deployed and accessible on Google Cloud Run! Please feel free to check out the live demo to experience the Doctor Chat PWA, interactive hybrid search, and real-time analytics in action.
 
 **MediQA Bot** is a production-ready, evidence-based Medical Question-Answering application powered by **Self-Corrective Retrieval-Augmented Generation (CRAG)** via **LangGraph**, **Qdrant Cloud Hybrid Search** (768-dim PubMedBERT Dense Vectors + FastEmbed BM25 Sparse Vectors with Reciprocal Rank Fusion), **PostgreSQL Analytics & Cost Tracking**, and a mobile-responsive **React Progressive Web App (PWA)**.
 
@@ -230,8 +235,10 @@ Evaluators can verify every feature of the project using the following checks:
 
 ## 🐳 Docker Deployment & GCP Cloud Run
 
-Build and run using Docker:
+The application is containerized and continuously deployed to **Google Cloud Run**:
+* 🌐 **Live Cloud Run URL**: **[https://medai-19247955175.europe-west1.run.app/](https://medai-19247955175.europe-west1.run.app/)**
 
+### Local Docker Run
 ```bash
 # Build Docker image (Pre-caches PubMedBERT model weights inside container image)
 docker build -t mediqa-bot:latest .
