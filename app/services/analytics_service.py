@@ -1,13 +1,30 @@
 from typing import Dict, Any, List, Optional
 import datetime
 from sqlalchemy.orm import Session
-from sqlalchemy import func
+from sqlalchemy import func, text, inspect
 from app.db import Base, engine, SessionLocal
 from app.models import ConversationSession, RAGQueryLog
 
 class AnalyticsService:
     def initialize_db(self):
         Base.metadata.create_all(bind=engine)
+        try:
+            with engine.connect() as conn:
+                url_str = str(engine.url).lower()
+                if "postgresql" in url_str:
+                    conn.execute(text("ALTER TABLE rag_query_logs ADD COLUMN IF NOT EXISTS user_feedback VARCHAR;"))
+                    conn.execute(text("ALTER TABLE rag_query_logs ADD COLUMN IF NOT EXISTS feedback_comment TEXT;"))
+                    conn.commit()
+                else:
+                    inspector = inspect(engine)
+                    existing_cols = [col["name"] for col in inspector.get_columns("rag_query_logs")]
+                    if "user_feedback" not in existing_cols:
+                        conn.execute(text("ALTER TABLE rag_query_logs ADD COLUMN user_feedback VARCHAR;"))
+                    if "feedback_comment" not in existing_cols:
+                        conn.execute(text("ALTER TABLE rag_query_logs ADD COLUMN feedback_comment TEXT;"))
+                    conn.commit()
+        except Exception as e:
+            print(f"[AnalyticsService] Column migration check notice: {e}")
         print("[AnalyticsService] PostgreSQL Database tables verified & initialized.")
 
     def calculate_cost(self, model_name: str, prompt_tokens: int, completion_tokens: int) -> float:
