@@ -1,3 +1,5 @@
+import os
+import asyncio
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -8,8 +10,6 @@ from app.config import settings
 from app.services.search_service import search_engine
 from app.services.agent_service import agent_service
 from app.routers import health, search, qa, ingest, analytics
-
-import asyncio
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):

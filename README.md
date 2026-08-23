@@ -194,10 +194,16 @@ cd ..
 
 ### Step 5: Run the MediQA Bot Application
 
-Launch the unified FastAPI server:
-
+Launch using **`make`** (Recommended):
 ```bash
-python main.py
+make run        # Run standard server
+make dev        # Run with hot-reloading
+make compose-up # Run complete stack (App + Postgres + Qdrant)
+```
+
+Or using `uv` directly:
+```bash
+uv run python main.py
 ```
 
 The application will start at **`http://localhost:8000`**:
