@@ -10,6 +10,7 @@ from qdrant_client import QdrantClient, models
 
 from app.config import settings
 from app.schemas import SearchResultItem
+from langfuse import observe
 
 class SearchEngineService:
     def __init__(self):
@@ -69,6 +70,7 @@ class SearchEngineService:
             values=embed.values.tolist()
         )
 
+    @observe(as_type="retriever", name="qdrant-hybrid-search")
     def hybrid_search(self, query_text: str, top_k: int = 5) -> List[SearchResultItem]:
         if not self.client or not self.dense_model or not self.sparse_model:
             print("[SearchEngine] Client uninitialized. Running initialize()...")

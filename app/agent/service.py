@@ -6,6 +6,8 @@ from app.config import settings
 from app.agent.llm_client import llm_client
 from app.agent.workflow import build_crag_workflow
 from app.services.analytics_service import analytics_service
+from langfuse import observe, get_client, propagate_attributes
+from langfuse.langchain import CallbackHandler
 
 class MedicalAgentService:
     def __init__(self):
@@ -18,13 +20,44 @@ class MedicalAgentService:
         self.graph = build_crag_workflow(self.memory)
         print("[MedicalAgent] Modular LangGraph CRAG Workflow compiled successfully.")
 
+    @observe(as_type="agent", name="medical-qa-crag-agent")
     def run_qa(self, question: str, session_id: str = "default_session", model: Optional[str] = None, max_turns: int = 5) -> Dict[str, Any]:
         if self.graph is None:
             print("[MedicalAgent] Graph uninitialized. Running initialize()...")
             self.initialize()
 
         start_time = time.perf_counter()
-        config = {"configurable": {"thread_id": session_id}}
+        
+        # Set clean, explicit trace input to avoid leaking unneeded parameters
+        try:
+            lf = get_client()
+            lf.update_current_span(
+                input={"question": question, "session_id": session_id, "model": model or settings.DEFAULT_MODEL},
+                tags=settings.LANGFUSE_TAGS,
+                metadata={"env": settings.APP_ENV}
+            )
+        except Exception:
+            pass
+
+        # Prepare Langfuse callbacks & metadata for LangGraph
+        callbacks = []
+        try:
+            langfuse_handler = CallbackHandler()
+            callbacks.append(langfuse_handler)
+        except Exception:
+            pass
+
+        config = {
+            "configurable": {"thread_id": session_id},
+            "callbacks": callbacks,
+            "metadata": {
+                "langfuse_session_id": session_id,
+                "langfuse_tags": settings.LANGFUSE_TAGS,
+                "langfuse_env": settings.APP_ENV,
+                "model": model or settings.DEFAULT_MODEL,
+                "question": question
+            }
+        }
         
         existing_state = self.graph.get_state(config)
         history = []
@@ -37,6 +70,21 @@ class MedicalAgentService:
             if prev_question and prev_answer:
                 history.append({"role": "user", "content": prev_question})
                 history.append({"role": "assistant", "content": prev_answer})
+        else:
+            try:
+                from app.db import SessionLocal
+                from app.models import RAGQueryLog
+                db = SessionLocal()
+                try:
+                    past_logs = db.query(RAGQueryLog).filter(RAGQueryLog.session_id == session_id).order_by(RAGQueryLog.id.asc()).all()
+                    for plog in past_logs:
+                        if plog.question and plog.answer:
+                            history.append({"role": "user", "content": plog.question})
+                            history.append({"role": "assistant", "content": plog.answer})
+                finally:
+                    db.close()
+            except Exception as e:
+                print(f"[MedicalAgent] DB history restoration notice: {e}")
 
         initial_state = {
             "question": question,
@@ -48,7 +96,14 @@ class MedicalAgentService:
             "fast_path": False
         }
         
-        final_state = self.graph.invoke(initial_state, config=config)
+        # Propagate attributes across child observations
+        with propagate_attributes(
+            session_id=session_id,
+            tags=settings.LANGFUSE_TAGS,
+            metadata={"model": model or settings.DEFAULT_MODEL, "env": settings.APP_ENV}
+        ):
+            final_state = self.graph.invoke(initial_state, config=config)
+
         end_time = time.perf_counter()
         latency_seconds = end_time - start_time
 
@@ -74,6 +129,62 @@ class MedicalAgentService:
             completion_tokens=c_tokens
         )
         
+        # Retrieve trace ID, set explicit output, and record automated evaluation scores
+        trace_id = None
+        try:
+            lf = get_client()
+            trace_id = lf.get_current_trace_id()
+            is_rel = final_state.get("is_relevant", "unknown")
+            is_grd = final_state.get("is_grounded", "unknown")
+            is_use = final_state.get("is_useful", "unknown")
+            
+            lf.update_current_span(
+                output={
+                    "answer": final_state.get("generation", ""),
+                    "is_relevant": is_rel,
+                    "is_grounded": is_grd,
+                    "is_useful": is_use,
+                    "fast_path": final_state.get("fast_path", False),
+                    "turns_executed": final_state.get("retry_count", 0) + 1
+                },
+                metadata={
+                    "retrieved_docs_count": len(final_state.get("documents", [])),
+                    "prompt_tokens": p_tokens,
+                    "completion_tokens": c_tokens,
+                    "estimated_cost_usd": db_log.estimated_cost_usd,
+                    "latency_seconds": round(latency_seconds, 2)
+                }
+            )
+
+            # Record Evaluator Scores in Langfuse
+            if trace_id:
+                if isinstance(is_rel, str) and is_rel.lower() in ["yes", "no"]:
+                    lf.create_score(
+                        trace_id=trace_id,
+                        name="document-relevance",
+                        value=1.0 if is_rel.lower() == "yes" else 0.0,
+                        data_type="BOOLEAN",
+                        comment=f"CRAG Document Relevance: {is_rel.upper()}"
+                    )
+                if isinstance(is_grd, str) and is_grd.lower() in ["yes", "no"]:
+                    lf.create_score(
+                        trace_id=trace_id,
+                        name="groundedness",
+                        value=1.0 if is_grd.lower() == "yes" else 0.0,
+                        data_type="BOOLEAN",
+                        comment=f"CRAG Groundedness (Hallucination Check): {is_grd.upper()}"
+                    )
+                if isinstance(is_use, str) and is_use.lower() in ["yes", "no"]:
+                    lf.create_score(
+                        trace_id=trace_id,
+                        name="answer-usefulness",
+                        value=1.0 if is_use.lower() == "yes" else 0.0,
+                        data_type="BOOLEAN",
+                        comment=f"CRAG Answer Usefulness & Alignment: {is_use.upper()}"
+                    )
+        except Exception as se:
+            print(f"[MedicalAgent] Langfuse scoring notice: {se}")
+
         return {
             "id": db_log.id,
             "answer": final_state.get("generation", "Could not generate a validated answer."),
@@ -88,5 +199,8 @@ class MedicalAgentService:
             "completion_tokens": c_tokens,
             "total_tokens": p_tokens + c_tokens,
             "estimated_cost_usd": db_log.estimated_cost_usd,
-            "turns_executed": final_state.get("retry_count", 0) + 1
+            "turns_executed": final_state.get("retry_count", 0) + 1,
+            "trace_id": trace_id
         }
+
+agent_service = MedicalAgentService()

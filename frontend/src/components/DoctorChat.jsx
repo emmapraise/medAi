@@ -1,20 +1,14 @@
 import React, { useState, useRef, useEffect } from "react";
-import { User, Bot, Send, Check, ChevronDown, Zap, Coins, DollarSign, ShieldCheck, Stethoscope, BookOpen, Copy, Edit3, ThumbsUp, ThumbsDown } from "lucide-react";
+import { User, Bot, Send, Check, ChevronDown, ShieldCheck, Stethoscope, BookOpen, Copy, Edit3, ThumbsUp, ThumbsDown } from "lucide-react";
 
-export default function DoctorChat({ sessionId, loadedHistory, onMessageSent }) {
-  const [messages, setMessages] = useState([
-    {
-      id: "welcome",
-      role: "system",
-      content: "Hello! I am your MediQA AI Assistant 🩺. Ask me any health or medical question (e.g. 'What are the symptoms of Glaucoma?' or 'How do I know if a baby has liver cancer?'). I analyze medical literature and double-check every answer against verified clinical sources."
-    }
-  ]);
+export default function DoctorChat({ sessionId, onMessageSent }) {
+  const [messages, setMessages] = useState([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const [loadingStep, setLoadingStep] = useState(0);
   const [openTraceId, setOpenTraceId] = useState(null);
+  const [feedbackState, setFeedbackState] = useState({});
   const [copiedId, setCopiedId] = useState(null);
-  const [feedbackMap, setFeedbackMap] = useState({});
   const chatBottomRef = useRef(null);
 
   const loadingMessages = [
@@ -24,64 +18,73 @@ export default function DoctorChat({ sessionId, loadedHistory, onMessageSent }) 
     "Fact-checking response for accuracy and safety..."
   ];
 
-  const handleFeedback = async (logId, feedbackType) => {
-    if (!logId) return;
-    setFeedbackMap((prev) => ({ ...prev, [logId]: feedbackType }));
-    try {
-      await fetch("/api/v1/analytics/feedback", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          log_id: logId,
-          feedback: feedbackType
-        })
-      });
-    } catch (err) {
-      console.error("Failed to submit feedback:", err);
-    }
-  };
-
-  // Update messages when a past session is selected
+  // Fetch session messages directly on mount or when sessionId changes
   useEffect(() => {
-    if (loadedHistory && loadedHistory.length > 0) {
-      const formatted = [
-        {
-          id: "welcome",
-          role: "system",
-          content: `Loaded past session context: ${sessionId}`
+    let active = true;
+
+    const fetchSessionHistory = async () => {
+      try {
+        const res = await fetch(`/api/v1/analytics/sessions/${sessionId}`);
+        if (res.ok) {
+          const data = await res.json();
+          if (active && data.messages && Array.isArray(data.messages) && data.messages.length > 0) {
+            const formatted = [
+              {
+                id: "welcome",
+                role: "system",
+                content: `Loaded past session context: ${sessionId}`
+              }
+            ];
+            data.messages.forEach((msg, idx) => {
+              let trace = [];
+              try {
+                if (Array.isArray(msg.execution_trace)) {
+                  trace = msg.execution_trace;
+                } else if (typeof msg.execution_trace === "string" && msg.execution_trace.trim()) {
+                  trace = JSON.parse(msg.execution_trace);
+                }
+              } catch {
+                trace = [];
+              }
+
+              formatted.push({
+                id: "user-" + (msg.id || idx),
+                role: "user",
+                content: typeof msg.question === "string" ? msg.question : String(msg.question || "")
+              });
+              formatted.push({
+                id: "bot-" + (msg.id || idx),
+                logId: msg.id,
+                role: "bot",
+                content: typeof msg.answer === "string" ? msg.answer : String(msg.answer || ""),
+                trace: trace,
+                isGrounded: msg.is_grounded,
+                userFeedback: msg.user_feedback,
+                turns: 1
+              });
+            });
+            setMessages(formatted);
+            return;
+          }
         }
-      ];
-      loadedHistory.forEach((msg) => {
-        formatted.push({
-          id: "user-" + msg.id,
-          role: "user",
-          content: msg.question
-        });
-        formatted.push({
-          id: "bot-" + msg.id,
-          logId: msg.id,
-          role: "bot",
-          content: msg.answer,
-          trace: msg.execution_trace || [],
-          latencySeconds: msg.latency_seconds,
-          tokens: msg.total_tokens,
-          costUsd: msg.estimated_cost_usd,
-          isGrounded: msg.is_grounded,
-          userFeedback: msg.user_feedback,
-          turns: 1
-        });
-      });
-      setMessages(formatted);
-    } else {
-      setMessages([
-        {
-          id: "welcome",
-          role: "system",
-          content: "Hello! I am your MediQA AI Assistant 🩺. Ask me any health or medical question (e.g. 'What are the symptoms of Glaucoma?' or 'How do I know if a baby has liver cancer?'). I analyze medical literature and double-check every answer against verified clinical sources."
-        }
-      ]);
-    }
-  }, [sessionId, loadedHistory]);
+      } catch (err) {
+        console.error("Failed to load session:", err);
+      }
+
+      if (active) {
+        setMessages([
+          {
+            id: "welcome",
+            role: "system",
+            content: "Hello! I am your MediQA AI Assistant 🩺. Ask me any health or medical question (e.g. 'What are the symptoms of Glaucoma?' or 'How do I know if a baby has liver cancer?'). I analyze medical literature and double-check every answer against verified clinical sources."
+          }
+        ]);
+      }
+    };
+
+    fetchSessionHistory();
+    return () => { active = false; };
+  }, [sessionId]);
 
   useEffect(() => {
     let interval;
@@ -95,9 +98,43 @@ export default function DoctorChat({ sessionId, loadedHistory, onMessageSent }) 
     return () => clearInterval(interval);
   }, [loading]);
 
-  useEffect(() => {
-    chatBottomRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages, loading, loadingStep]);
+  const handleFeedback = async (msgId, traceId, logId, value) => {
+    setFeedbackState((prev) => ({ ...prev, [msgId]: value }));
+    
+    // 1. Submit to Langfuse if traceId available
+    if (traceId) {
+      try {
+        await fetch("/api/v1/feedback", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            trace_id: traceId,
+            value: value,
+            name: "user-feedback",
+            comment: value === 1.0 ? "User marked answer helpful (Thumbs Up)" : "User marked answer unhelpful (Thumbs Down)"
+          })
+        });
+      } catch (e) {
+        console.warn("Langfuse feedback submission error:", e);
+      }
+    }
+
+    // 2. Submit to Analytics DB if logId available
+    if (logId) {
+      try {
+        await fetch("/api/v1/analytics/feedback", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            log_id: logId,
+            feedback: value === 1.0 ? "positive" : "negative"
+          })
+        });
+      } catch (err) {
+        console.warn("Analytics feedback error:", err);
+      }
+    }
+  };
 
   const handleCopy = (text, id) => {
     navigator.clipboard.writeText(text);
@@ -140,6 +177,7 @@ export default function DoctorChat({ sessionId, loadedHistory, onMessageSent }) 
             role: "bot",
             content: data.answer,
             trace: data.execution_trace || [],
+            traceId: data.trace_id,
             latencySeconds: data.latency_seconds,
             tokens: data.total_tokens,
             costUsd: data.estimated_cost_usd,
@@ -164,6 +202,7 @@ export default function DoctorChat({ sessionId, loadedHistory, onMessageSent }) 
   };
 
   const formatTraceStep = (step) => {
+    if (!step || typeof step !== "string") return String(step || "");
     if (step.includes("[Action: Generate Query]")) {
       return "🔍 Search Strategy: " + step.replace("[Action: Generate Query] ", "");
     }
@@ -209,32 +248,32 @@ export default function DoctorChat({ sessionId, loadedHistory, onMessageSent }) 
               {msg.role === "bot" && (
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: "8px" }}>
                   <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-                    {msg.logId && (
-                      <>
-                        <button
-                          type="button"
-                          className={`feedback-btn ${(feedbackMap[msg.logId] === "positive" || (!feedbackMap[msg.logId] && msg.userFeedback === "positive")) ? "active-thumb-up" : ""}`}
-                          onClick={() => handleFeedback(msg.logId, "positive")}
-                          title="Accurate and helpful"
-                        >
-                          <ThumbsUp size={12} />
-                        </button>
-                        <button
-                          type="button"
-                          className={`feedback-btn ${(feedbackMap[msg.logId] === "negative" || (!feedbackMap[msg.logId] && msg.userFeedback === "negative")) ? "active-thumb-down" : ""}`}
-                          onClick={() => handleFeedback(msg.logId, "negative")}
-                          title="Inaccurate or unhelpful"
-                        >
-                          <ThumbsDown size={12} />
-                        </button>
-                        {feedbackMap[msg.logId] && (
-                          <span style={{ fontSize: "11px", color: "var(--accent-cyan)", marginLeft: "4px" }}>
-                            Feedback saved!
-                          </span>
-                        )}
-                      </>
+                    <span style={{ fontSize: "11px", color: "var(--text-muted, #888)", marginRight: "2px" }}>Helpful?</span>
+                    <button
+                      type="button"
+                      className={`action-link-btn ${feedbackState[msg.id] === 1.0 || (msg.userFeedback === "positive" && feedbackState[msg.id] === undefined) ? "active-thumb-up" : ""}`}
+                      style={{ color: feedbackState[msg.id] === 1.0 ? "#00e676" : undefined }}
+                      onClick={() => handleFeedback(msg.id, msg.traceId, msg.logId, 1.0)}
+                      title="Helpful (Thumbs Up)"
+                    >
+                      <ThumbsUp size={13} />
+                    </button>
+                    <button
+                      type="button"
+                      className={`action-link-btn ${feedbackState[msg.id] === 0.0 || (msg.userFeedback === "negative" && feedbackState[msg.id] === undefined) ? "active-thumb-down" : ""}`}
+                      style={{ color: feedbackState[msg.id] === 0.0 ? "#ff5252" : undefined }}
+                      onClick={() => handleFeedback(msg.id, msg.traceId, msg.logId, 0.0)}
+                      title="Not helpful (Thumbs Down)"
+                    >
+                      <ThumbsDown size={13} />
+                    </button>
+                    {feedbackState[msg.id] !== undefined && (
+                      <span style={{ fontSize: "11px", color: "var(--accent-cyan)", marginLeft: "4px" }}>
+                        Feedback saved!
+                      </span>
                     )}
                   </div>
+
                   <button
                     type="button"
                     className="action-link-btn"
@@ -275,12 +314,9 @@ export default function DoctorChat({ sessionId, loadedHistory, onMessageSent }) 
                 </div>
               )}
 
-              {msg.latencySeconds && (
-                <div className="msg-meta-pill">
-                  <span><Zap size={12} /> {msg.latencySeconds}s response time</span>
-                  <span><ShieldCheck size={12} /> Fact-Checked: {(msg.isGrounded || "").toUpperCase()}</span>
-                  <span><Coins size={12} /> {msg.tokens.toLocaleString()} tokens</span>
-                  <span><DollarSign size={12} /> ${msg.costUsd}</span>
+              {msg.isGrounded && msg.isGrounded !== "unknown" && (
+                <div className="msg-meta-pill" style={{ display: "inline-flex", marginTop: "8px" }}>
+                  <span><ShieldCheck size={12} /> Fact-Checked: {msg.isGrounded.toUpperCase()}</span>
                 </div>
               )}
             </div>

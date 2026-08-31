@@ -10,6 +10,7 @@ from app.config import settings
 from app.services.search_service import search_engine
 from app.services.agent_service import agent_service
 from app.routers import health, search, qa, ingest, analytics
+from langfuse import get_client
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -19,6 +20,10 @@ async def lifespan(app: FastAPI):
     loop.run_in_executor(None, agent_service.initialize)
     yield
     print("Shutting down Medical QA Server...")
+    try:
+        get_client().flush()
+    except Exception:
+        pass
 
 app = FastAPI(
     title=settings.PROJECT_NAME,

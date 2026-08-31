@@ -2,7 +2,7 @@ from fastapi import APIRouter, HTTPException, Query
 from app.services.analytics_service import analytics_service
 from app.db import SessionLocal
 from app.models import RAGQueryLog, ConversationSession
-from app.schemas import FeedbackRequest, FeedbackResponse
+from app.schemas import AnalyticsFeedbackRequest, AnalyticsFeedbackResponse
 
 router = APIRouter()
 
@@ -13,13 +13,13 @@ def get_performance_summary():
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@router.post("/feedback", response_model=FeedbackResponse, summary="Submit User Feedback (Thumbs Up / Down)")
-def submit_feedback(payload: FeedbackRequest):
+@router.post("/feedback", response_model=AnalyticsFeedbackResponse, summary="Submit User Feedback (Thumbs Up / Down)")
+def submit_feedback(payload: AnalyticsFeedbackRequest):
     try:
         success = analytics_service.record_feedback(payload.log_id, payload.feedback, payload.comment)
         if not success:
             raise HTTPException(status_code=404, detail="Query log record not found")
-        return FeedbackResponse(status="success", log_id=payload.log_id, feedback=payload.feedback)
+        return AnalyticsFeedbackResponse(status="success", log_id=payload.log_id, feedback=payload.feedback)
     except HTTPException as he:
         raise he
     except Exception as e:
@@ -85,20 +85,25 @@ def get_session_history(session_id: str):
                 {
                     "id": log.id,
                     "question": log.question,
-                    "generated_query": log.generated_query,
-                    "answer": log.answer,
-                    "is_relevant": log.is_relevant,
-                    "is_grounded": log.is_grounded,
-                    "is_useful": log.is_useful,
+                    "generated_query": log.generated_query or "",
+                    "answer": log.answer or "",
+                    "is_relevant": log.is_relevant or "unknown",
+                    "is_grounded": log.is_grounded or "unknown",
+                    "is_useful": log.is_useful or "unknown",
                     "execution_trace": log.execution_trace or [],
+                    "user_feedback": getattr(log, "user_feedback", None),
+                    "feedback_comment": getattr(log, "feedback_comment", None),
                     "latency_seconds": round(getattr(log, "latency_seconds", 0.0), 2),
-                    "total_tokens": log.total_tokens,
-                    "estimated_cost_usd": log.estimated_cost_usd,
-                    "created_at": log.created_at.isoformat()
+                    "total_tokens": getattr(log, "total_tokens", 0),
+                    "estimated_cost_usd": getattr(log, "estimated_cost_usd", 0.0),
+                    "created_at": log.created_at.isoformat() if log.created_at else None
                 }
                 for log in logs
             ]
         }
+    except Exception as e:
+        print(f"[AnalyticsRouter] Session history lookup notice: {e}")
+        return {"session_id": session_id, "messages": []}
     finally:
         db.close()
 

@@ -1,14 +1,11 @@
 import React, { useState, useEffect } from "react";
-import { Stethoscope, UserCheck, BookOpen, BarChart3, Plus, MessageSquare, History, Download, Trash2, Menu, X } from "lucide-react";
+import { Stethoscope, UserCheck, Plus, MessageSquare, History, Download, Trash2, Menu, X } from "lucide-react";
 import DoctorChat from "./components/DoctorChat";
-import HybridSearch from "./components/HybridSearch";
-import AnalyticsDashboard from "./components/AnalyticsDashboard";
 
 export default function App() {
   const [activeTab, setActiveTab] = useState("chat");
   const [sessionId, setSessionId] = useState(() => "patient_session_" + Math.floor(1000 + Math.random() * 9000));
   const [pastSessions, setPastSessions] = useState([]);
-  const [loadedHistory, setLoadedHistory] = useState([]);
   const [deferredPrompt, setDeferredPrompt] = useState(null);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
@@ -42,24 +39,12 @@ export default function App() {
   const handleNewSession = () => {
     const newId = "patient_session_" + Math.floor(1000 + Math.random() * 9000);
     setSessionId(newId);
-    setLoadedHistory([]);
-    setActiveTab("chat");
     setMobileMenuOpen(false);
   };
 
-  const handleSelectSession = async (sId) => {
+  const handleSelectSession = (sId) => {
     setSessionId(sId);
-    setActiveTab("chat");
     setMobileMenuOpen(false);
-    try {
-      const res = await fetch(`/api/v1/analytics/sessions/${sId}`);
-      if (res.ok) {
-        const data = await res.json();
-        setLoadedHistory(data.messages || []);
-      }
-    } catch (err) {
-      console.error(err);
-    }
   };
 
   const handleDeleteSession = async (e, sId) => {
@@ -118,21 +103,9 @@ export default function App() {
           </button>
         </div>
 
-        <button className="btn-primary" onClick={handleNewSession} style={{ justifyContent: "center", width: "100%" }}>
-          <Plus size={18} /> <span>New Chat</span>
+        <button className="btn-primary" onClick={handleNewSession} style={{ justifyContent: "center", width: "100%", marginBottom: "16px" }}>
+          <Plus size={18} /> <span>+ New Chat</span>
         </button>
-
-        <nav className="nav-menu">
-          <button className={`nav-item ${activeTab === "chat" ? "active" : ""}`} onClick={() => handleTabChange("chat")}>
-            <UserCheck size={18} /> <span>AI Doctor Chat</span>
-          </button>
-          <button className={`nav-item ${activeTab === "search" ? "active" : ""}`} onClick={() => handleTabChange("search")}>
-            <BookOpen size={18} /> <span>Literature Search</span>
-          </button>
-          <button className={`nav-item ${activeTab === "analytics" ? "active" : ""}`} onClick={() => handleTabChange("analytics")}>
-            <BarChart3 size={18} /> <span>Performance & Costs</span>
-          </button>
-        </nav>
 
         {/* Past Sessions List */}
         <div className="past-sessions-container">
@@ -192,15 +165,11 @@ export default function App() {
         </header>
 
         <div className="tab-content">
-          {activeTab === "chat" && (
-            <DoctorChat
-              sessionId={sessionId}
-              loadedHistory={loadedHistory}
-              onMessageSent={fetchPastSessions}
-            />
-          )}
-          {activeTab === "search" && <HybridSearch />}
-          {activeTab === "analytics" && <AnalyticsDashboard />}
+          <DoctorChat
+            key={sessionId}
+            sessionId={sessionId}
+            onMessageSent={fetchPastSessions}
+          />
         </div>
       </main>
     </div>

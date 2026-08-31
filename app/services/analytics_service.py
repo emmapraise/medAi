@@ -8,7 +8,6 @@ from app.models import ConversationSession, RAGQueryLog
 class AnalyticsService:
     def initialize_db(self):
         try:
-            Base.metadata.create_all(bind=engine)
             with engine.connect() as conn:
                 url_str = str(engine.url).lower()
                 if "postgresql" in url_str:
@@ -99,7 +98,25 @@ class AnalyticsService:
         except Exception as e:
             db.rollback()
             print(f"[AnalyticsService Error] Failed to log to PostgreSQL: {e}")
-            raise e
+            cost = self.calculate_cost(model_used, prompt_tokens, completion_tokens)
+            return RAGQueryLog(
+                session_id=session_id,
+                question=question,
+                generated_query=generated_query,
+                retrieved_docs_count=retrieved_docs_count,
+                is_relevant=is_relevant,
+                is_grounded=is_grounded,
+                is_useful=is_useful,
+                turns_executed=turns_executed,
+                execution_trace=execution_trace,
+                answer=answer,
+                model_used=model_used,
+                latency_seconds=round(latency_seconds, 2),
+                prompt_tokens=prompt_tokens,
+                completion_tokens=completion_tokens,
+                total_tokens=prompt_tokens + completion_tokens,
+                estimated_cost_usd=cost
+            )
         finally:
             db.close()
 
