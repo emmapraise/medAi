@@ -23,13 +23,14 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY pyproject.toml ./
 RUN uv sync --no-dev --no-cache
 
-# Pre-download & cache model weights inside container image for instant startup (with fallback)
-RUN uv run python -c "from sentence_transformers import SentenceTransformer; from fastembed import SparseTextEmbedding; SentenceTransformer('emmapraise/pubmedbert-base-embeddings-onnx', backend='onnx', model_kwargs={'provider': 'CPUExecutionProvider'}); SparseTextEmbedding('Qdrant/bm25')" || true
-
-# Copy application source code and built frontend dist
+# Copy application source code, models, and built frontend dist
+COPY models/ ./models/
 COPY app/ ./app/
 COPY main.py ./main.py
 COPY --from=frontend-builder /app/frontend/dist ./frontend/dist
+
+# Pre-cache FastEmbed BM25 Sparse Vectorizer in container image
+RUN uv run python -c "from fastembed import SparseTextEmbedding; SparseTextEmbedding('Qdrant/bm25')" || true
 
 EXPOSE 8080 8000
 CMD ["sh", "-c", "uv run uvicorn main:app --host 0.0.0.0 --port ${PORT:-8080} --workers 1 --timeout-keep-alive 120"]
