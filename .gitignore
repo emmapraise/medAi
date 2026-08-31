@@ -12,3 +12,4 @@ wheels/
 dataset/
 qdrant_storage/
 node_modules/
+models/

@@ -24,7 +24,7 @@ COPY pyproject.toml uv.lock ./
 RUN uv sync --frozen --no-cache
 
 # Pre-download & cache model weights inside container image for instant startup
-RUN uv run python -c "from sentence_transformers import SentenceTransformer; from fastembed import SparseTextEmbedding; SentenceTransformer('NeuML/pubmedbert-base-embeddings'); SparseTextEmbedding('Qdrant/bm25')"
+RUN uv run python -c "from sentence_transformers import SentenceTransformer; from fastembed import SparseTextEmbedding; SentenceTransformer('emmapraise/pubmedbert-base-embeddings-onnx', backend='onnx', model_kwargs={'provider': 'CPUExecutionProvider'}); SparseTextEmbedding('Qdrant/bm25')"
 
 # Copy application source code and built frontend dist
 COPY app/ ./app/

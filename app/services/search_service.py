@@ -30,11 +30,16 @@ class SearchEngineService:
             print(f"[SearchEngine] Standalone Qdrant server unreachable ({e}). Falling back to :memory:")
             self.client = QdrantClient(":memory:")
 
-        # PubMedBERT Dense model setup
-        print("[SearchEngine] Loading PubMedBERT Dense Model...")
+        # PubMedBERT ONNX Dense model setup
+        print(f"[SearchEngine] Loading ONNX Dense Model: {settings.DENSE_MODEL_NAME}...")
         try:
-            self.dense_model = SentenceTransformer(settings.DENSE_MODEL_NAME, device=device, local_files_only=True)
-        except Exception:
+            self.dense_model = SentenceTransformer(
+                settings.DENSE_MODEL_NAME,
+                backend="onnx",
+                model_kwargs={"provider": "CPUExecutionProvider"}
+            )
+        except Exception as onnx_err:
+            print(f"[SearchEngine] ONNX loading notice ({onnx_err}), attempting standard SentenceTransformer loader...")
             self.dense_model = SentenceTransformer(settings.DENSE_MODEL_NAME, device=device)
 
         # FastEmbed BM25 Sparse model setup
