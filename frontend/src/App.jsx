@@ -116,15 +116,9 @@ export default function App() {
           </button>
         </div>
 
-        <button className="btn-primary" onClick={handleNewSession} style={{ justifyContent: "center", width: "100%" }}>
-          <Plus size={18} /> <span>New Chat</span>
+        <button className="btn-primary" onClick={handleNewSession} style={{ justifyContent: "center", width: "100%", marginBottom: "16px" }}>
+          <Plus size={18} /> <span>+ New Chat</span>
         </button>
-
-        <nav className="nav-menu">
-          <button className={`nav-item active`} onClick={() => handleTabChange("chat")}>
-            <UserCheck size={18} /> <span>AI Doctor Chat</span>
-          </button>
-        </nav>
 
         {/* Past Sessions List */}
         <div className="past-sessions-container">

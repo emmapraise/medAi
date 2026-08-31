@@ -63,7 +63,7 @@ export default function DoctorChat({ sessionId, loadedHistory, onMessageSent }) 
 
   // Update messages when a past session is selected
   useEffect(() => {
-    if (loadedHistory && loadedHistory.length > 0) {
+    if (loadedHistory && Array.isArray(loadedHistory) && loadedHistory.length > 0) {
       const formatted = [
         {
           id: "welcome",
@@ -71,21 +71,29 @@ export default function DoctorChat({ sessionId, loadedHistory, onMessageSent }) 
           content: `Loaded past session context: ${sessionId}`
         }
       ];
-      loadedHistory.forEach((msg) => {
+      loadedHistory.forEach((msg, idx) => {
+        let trace = [];
+        try {
+          if (Array.isArray(msg.execution_trace)) {
+            trace = msg.execution_trace;
+          } else if (typeof msg.execution_trace === "string" && msg.execution_trace.trim()) {
+            trace = JSON.parse(msg.execution_trace);
+          }
+        } catch {
+          trace = [];
+        }
+
         formatted.push({
-          id: "user-" + msg.id,
+          id: "user-" + (msg.id || idx),
           role: "user",
-          content: msg.question
+          content: msg.question || ""
         });
         formatted.push({
-          id: "bot-" + msg.id,
+          id: "bot-" + (msg.id || idx),
           logId: msg.id,
           role: "bot",
-          content: msg.answer,
-          trace: msg.execution_trace || [],
-          latencySeconds: msg.latency_seconds,
-          tokens: msg.total_tokens,
-          costUsd: msg.estimated_cost_usd,
+          content: msg.answer || "",
+          trace: trace,
           isGrounded: msg.is_grounded,
           userFeedback: msg.user_feedback,
           turns: 1
@@ -185,6 +193,7 @@ export default function DoctorChat({ sessionId, loadedHistory, onMessageSent }) 
   };
 
   const formatTraceStep = (step) => {
+    if (!step || typeof step !== "string") return String(step || "");
     if (step.includes("[Action: Generate Query]")) {
       return "🔍 Search Strategy: " + step.replace("[Action: Generate Query] ", "");
     }
