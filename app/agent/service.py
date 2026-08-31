@@ -32,7 +32,9 @@ class MedicalAgentService:
         try:
             lf = get_client()
             lf.update_current_span(
-                input={"question": question, "session_id": session_id, "model": model or settings.DEFAULT_MODEL}
+                input={"question": question, "session_id": session_id, "model": model or settings.DEFAULT_MODEL},
+                tags=settings.LANGFUSE_TAGS,
+                metadata={"env": settings.APP_ENV}
             )
         except Exception:
             pass
@@ -50,7 +52,8 @@ class MedicalAgentService:
             "callbacks": callbacks,
             "metadata": {
                 "langfuse_session_id": session_id,
-                "langfuse_tags": ["medical-qa", "crag", "production"],
+                "langfuse_tags": settings.LANGFUSE_TAGS,
+                "langfuse_env": settings.APP_ENV,
                 "model": model or settings.DEFAULT_MODEL,
                 "question": question
             }
@@ -96,8 +99,8 @@ class MedicalAgentService:
         # Propagate attributes across child observations
         with propagate_attributes(
             session_id=session_id,
-            tags=["medical-qa", "crag", "production"],
-            metadata={"model": model or settings.DEFAULT_MODEL}
+            tags=settings.LANGFUSE_TAGS,
+            metadata={"model": model or settings.DEFAULT_MODEL, "env": settings.APP_ENV}
         ):
             final_state = self.graph.invoke(initial_state, config=config)
 
