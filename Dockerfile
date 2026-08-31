@@ -31,6 +31,5 @@ COPY app/ ./app/
 COPY main.py ./main.py
 COPY --from=frontend-builder /app/frontend/dist ./frontend/dist
 
-ENV PORT=8000
-EXPOSE 8000
-CMD ["sh", "-c", "uv run uvicorn main:app --host 0.0.0.0 --port ${PORT:-8000} --workers 1"]
+EXPOSE 8080 8000
+CMD ["sh", "-c", "uv run uvicorn main:app --host 0.0.0.0 --port ${PORT:-8080} --workers 1"]
