@@ -32,4 +32,4 @@ COPY main.py ./main.py
 COPY --from=frontend-builder /app/frontend/dist ./frontend/dist
 
 EXPOSE 8080 8000
-CMD ["sh", "-c", "uv run uvicorn main:app --host 0.0.0.0 --port ${PORT:-8080} --workers 1"]
+CMD ["sh", "-c", "uv run uvicorn main:app --host 0.0.0.0 --port ${PORT:-8080} --workers 1 --timeout-keep-alive 120"]
