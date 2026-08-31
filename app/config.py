@@ -22,7 +22,7 @@ class Settings:
     # LLM API Settings (Gemini & OpenAI)
     GEMINI_API_KEY: str | None = os.getenv("GEMINI_API_KEY") or os.getenv("GEMINI_API_KEYS")
     OPENAI_API_KEY: str | None = os.getenv("OPENAI_API_KEY")
-    DEFAULT_MODEL: str = os.getenv("DEFAULT_MODEL", "gemini-1.5-flash")
+    DEFAULT_MODEL: str = os.getenv("DEFAULT_MODEL", "gemini-2.5-flash")
 
     # Langfuse Observability & Tracing Configuration
     LANGFUSE_PUBLIC_KEY: str | None = os.getenv("LANGFUSE_PUBLIC_KEY")

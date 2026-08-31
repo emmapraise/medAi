@@ -1,13 +1,14 @@
 import os
 from typing import Optional, Tuple
 from langchain_openai import ChatOpenAI
+from langchain_google_genai import ChatGoogleGenerativeAI
 from app.config import settings
 from langfuse import observe, get_client
 
 class AgentLLMClient:
     def __init__(self):
-        self.llm: Optional[ChatOpenAI] = None
-        self.fallback_llm: Optional[ChatOpenAI] = None
+        self.llm = None
+        self.fallback_llm = None
 
     def initialize(self):
         gemini_key = settings.GEMINI_API_KEY
@@ -18,23 +19,24 @@ class AgentLLMClient:
 
         if openai_key:
             os.environ["OPENAI_API_KEY"] = openai_key
-
-        if gemini_key:
-            self.llm = ChatOpenAI(
-                api_key=gemini_key,
-                base_url="https://generativelanguage.googleapis.com/v1beta/openai/",
-                model=settings.DEFAULT_MODEL
-            )
-            print(f"[MedicalAgent] Primary LLM: Gemini ({settings.DEFAULT_MODEL}).")
-        
-        if openai_key:
             self.fallback_llm = ChatOpenAI(
                 api_key=openai_key,
                 model="gpt-4o-mini"
             )
             print("[MedicalAgent] Fallback LLM: OpenAI (gpt-4o-mini).")
-            if not self.llm:
-                self.llm = self.fallback_llm
+
+        if gemini_key:
+            try:
+                self.llm = ChatGoogleGenerativeAI(
+                    google_api_key=gemini_key,
+                    model=settings.DEFAULT_MODEL
+                )
+                print(f"[MedicalAgent] Primary LLM: Gemini ({settings.DEFAULT_MODEL}).")
+            except Exception as ge:
+                print(f"[MedicalAgent Warning] Gemini init error: {ge}")
+
+        if not self.llm and self.fallback_llm:
+            self.llm = self.fallback_llm
 
     @observe(as_type="generation", name="llm-generation")
     def invoke(self, prompt: str, max_tokens: Optional[int] = None, temperature: float = 0.7) -> Tuple[str, str, int, int]:
