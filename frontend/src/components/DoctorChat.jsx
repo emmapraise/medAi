@@ -8,6 +8,7 @@ export default function DoctorChat({ sessionId, onMessageSent }) {
   const [loadingStep, setLoadingStep] = useState(0);
   const [openTraceId, setOpenTraceId] = useState(null);
   const [feedbackState, setFeedbackState] = useState({});
+  const [copiedId, setCopiedId] = useState(null);
   const chatBottomRef = useRef(null);
 
   const loadingMessages = [
