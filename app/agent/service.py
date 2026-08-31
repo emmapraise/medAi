@@ -22,6 +22,10 @@ class MedicalAgentService:
 
     @observe(as_type="agent", name="medical-qa-crag-agent")
     def run_qa(self, question: str, session_id: str = "default_session", model: Optional[str] = None, max_turns: int = 5) -> Dict[str, Any]:
+        if self.graph is None:
+            print("[MedicalAgent] Graph uninitialized. Running initialize()...")
+            self.initialize()
+
         start_time = time.perf_counter()
         
         # Set clean, explicit trace input to avoid leaking unneeded parameters
@@ -164,6 +168,7 @@ class MedicalAgentService:
             print(f"[MedicalAgent] Langfuse scoring notice: {se}")
 
         return {
+            "id": db_log.id,
             "answer": final_state.get("generation", "Could not generate a validated answer."),
             "generated_query": final_state.get("query", ""),
             "is_relevant": final_state.get("is_relevant", "unknown"),

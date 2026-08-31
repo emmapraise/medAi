@@ -1,3 +1,5 @@
+import os
+import asyncio
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -13,8 +15,9 @@ from langfuse import get_client
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     print("Starting Medical QA Server & React PWA Application...")
-    search_engine.initialize()
-    agent_service.initialize()
+    loop = asyncio.get_running_loop()
+    loop.run_in_executor(None, search_engine.initialize)
+    loop.run_in_executor(None, agent_service.initialize)
     yield
     print("Shutting down Medical QA Server...")
     try:
@@ -44,30 +47,43 @@ app.include_router(qa.router, prefix="/api/v1", tags=["QA Agent"])
 app.include_router(ingest.router, prefix="/api/v1", tags=["Ingestion"])
 app.include_router(analytics.router, prefix="/api/v1/analytics", tags=["Analytics & Cost Monitoring"])
 
-# Mount React PWA Dist Static Files
-app.mount("/static", StaticFiles(directory="frontend/dist"), name="static")
-app.mount("/assets", StaticFiles(directory="frontend/dist/assets"), name="assets")
+# Mount React PWA Dist Static Files if available
+if os.path.exists("frontend/dist"):
+    app.mount("/static", StaticFiles(directory="frontend/dist", check_dir=False), name="static")
+    if os.path.exists("frontend/dist/assets"):
+        app.mount("/assets", StaticFiles(directory="frontend/dist/assets", check_dir=False), name="assets")
 
 @app.get("/manifest.json")
 def get_manifest():
-    return FileResponse("frontend/dist/manifest.json")
+    if os.path.exists("frontend/dist/manifest.json"):
+        return FileResponse("frontend/dist/manifest.json")
+    return {"status": "ok"}
 
 @app.get("/sw.js")
 def get_service_worker():
-    return FileResponse("frontend/dist/sw.js", media_type="application/javascript")
+    if os.path.exists("frontend/dist/sw.js"):
+        return FileResponse("frontend/dist/sw.js", media_type="application/javascript")
+    return {"status": "ok"}
 
 @app.get("/icon-192.png")
 def get_icon192():
-    return FileResponse("frontend/dist/icon-192.png", media_type="image/svg+xml")
+    if os.path.exists("frontend/dist/icon-192.png"):
+        return FileResponse("frontend/dist/icon-192.png", media_type="image/png")
+    return {"status": "ok"}
 
 @app.get("/icon-512.png")
 def get_icon512():
-    return FileResponse("frontend/dist/icon-512.png", media_type="image/svg+xml")
+    if os.path.exists("frontend/dist/icon-512.png"):
+        return FileResponse("frontend/dist/icon-512.png", media_type="image/png")
+    return {"status": "ok"}
 
 @app.get("/", summary="Serve React PWA Frontend Dashboard")
 def read_root():
-    return FileResponse("frontend/dist/index.html")
+    if os.path.exists("frontend/dist/index.html"):
+        return FileResponse("frontend/dist/index.html")
+    return {"status": "running", "message": "MediQA Bot API is live"}
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)
+    port = int(os.getenv("PORT", 8080))
+    uvicorn.run("main:app", host="0.0.0.0", port=port)

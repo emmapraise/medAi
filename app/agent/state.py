@@ -1,4 +1,13 @@
+from enum import Enum
 from typing import List, Dict, Any, TypedDict
+
+class NodeName(str, Enum):
+    GENERATE_QUERY = "generate_query"
+    RETRIEVE = "retrieve"
+    GRADE_DOCUMENTS = "grade_documents"
+    REWRITE_QUERY = "rewrite_query"
+    GENERATE_ANSWER = "generate_answer"
+    GRADE_GENERATION = "grade_generation"
 
 class GraphState(TypedDict):
     question: str

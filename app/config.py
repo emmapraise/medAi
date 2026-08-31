@@ -15,7 +15,7 @@ class Settings:
     COLLECTION_NAME: str = "medical_knowledge_base_hybrid"
     
     # Embedding Models
-    DENSE_MODEL_NAME: str = "NeuML/pubmedbert-base-embeddings"
+    DENSE_MODEL_NAME: str = os.getenv("DENSE_MODEL_NAME", "emmapraise/pubmedbert-base-embeddings-onnx")
     SPARSE_MODEL_NAME: str = "Qdrant/bm25"
     DENSE_VECTOR_SIZE: int = 768
     

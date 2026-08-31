@@ -24,6 +24,7 @@ class AskRequest(BaseModel):
     max_turns: Optional[int] = Field(default=5, description="Maximum agent tool iterations", ge=1, le=10)
 
 class AskResponse(BaseModel):
+    id: Optional[int] = Field(default=None, description="Query log ID for user feedback tracking")
     question: str
     generated_query: str
     answer: str
@@ -40,6 +41,16 @@ class AskResponse(BaseModel):
     estimated_cost_usd: float
     turns_executed: int
     trace_id: Optional[str] = None
+
+class FeedbackRequest(BaseModel):
+    log_id: int = Field(..., description="Query log ID to record feedback for")
+    feedback: str = Field(..., description="Feedback value: 'positive' (thumbs up) or 'negative' (thumbs down)")
+    comment: Optional[str] = Field(default=None, description="Optional user comment")
+
+class FeedbackResponse(BaseModel):
+    status: str
+    log_id: int
+    feedback: str
 
 class IngestResponse(BaseModel):
     status: str

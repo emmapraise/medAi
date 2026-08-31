@@ -20,6 +20,7 @@ def ask_medical_agent(payload: AskRequest):
         )
         
         return AskResponse(
+            id=result.get("id"),
             question=payload.question,
             generated_query=result["generated_query"],
             answer=result["answer"],

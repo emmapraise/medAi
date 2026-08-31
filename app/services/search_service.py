@@ -31,12 +31,18 @@ class SearchEngineService:
             print(f"[SearchEngine] Standalone Qdrant server unreachable ({e}). Falling back to :memory:")
             self.client = QdrantClient(":memory:")
 
-        # PubMedBERT Dense model setup
-        print("[SearchEngine] Loading PubMedBERT Dense Model...")
+        # PubMedBERT ONNX Dense model setup
+        model_target = "models/pubmedbert-onnx" if os.path.isdir("models/pubmedbert-onnx") else settings.DENSE_MODEL_NAME
+        print(f"[SearchEngine] Loading ONNX Dense Model from: {model_target}...")
         try:
-            self.dense_model = SentenceTransformer(settings.DENSE_MODEL_NAME, device=device, local_files_only=True)
-        except Exception:
-            self.dense_model = SentenceTransformer(settings.DENSE_MODEL_NAME, device=device)
+            self.dense_model = SentenceTransformer(
+                model_target,
+                backend="onnx",
+                model_kwargs={"provider": "CPUExecutionProvider"}
+            )
+        except Exception as onnx_err:
+            print(f"[SearchEngine] ONNX loading notice ({onnx_err}), attempting standard loader...")
+            self.dense_model = SentenceTransformer(model_target, device=device)
 
         # FastEmbed BM25 Sparse model setup
         print("[SearchEngine] Loading FastEmbed BM25 Sparse Vectorizer (Qdrant/bm25)...")
@@ -45,11 +51,15 @@ class SearchEngineService:
         # Auto-ingest dataset if collection does not exist
         cols = [c.name for c in self.client.get_collections().collections]
         if settings.COLLECTION_NAME not in cols:
-            print(f"[SearchEngine] Collection '{settings.COLLECTION_NAME}' missing. Auto-ingesting dataset...")
-            try:
-                self.ingest_dataset()
-            except Exception as ie:
-                print(f"[SearchEngine] Auto-ingestion warning: {ie}")
+            print(f"[SearchEngine] Collection '{settings.COLLECTION_NAME}' missing.")
+            if os.path.exists("dataset/medquad.csv"):
+                print("[SearchEngine] Auto-ingesting dataset...")
+                try:
+                    self.ingest_dataset()
+                except Exception as ie:
+                    print(f"[SearchEngine] Auto-ingestion warning: {ie}")
+            else:
+                print("[SearchEngine] 'dataset/medquad.csv' not present in container (using existing remote Qdrant collection).")
 
         print("[SearchEngine] Search Engine Service ready.")
 

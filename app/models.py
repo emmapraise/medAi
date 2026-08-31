@@ -35,6 +35,8 @@ class RAGQueryLog(Base):
     completion_tokens = Column(Integer, default=0)
     total_tokens = Column(Integer, default=0)
     estimated_cost_usd = Column(Float, default=0.0)
+    user_feedback = Column(String, nullable=True, default=None)
+    feedback_comment = Column(Text, nullable=True, default=None)
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
 
     session = relationship("ConversationSession", back_populates="logs")

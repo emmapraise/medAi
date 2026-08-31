@@ -37,33 +37,57 @@ def generate_query_node(state: GraphState) -> Dict[str, Any]:
             "completion_tokens": c_tok + c
         }
 
-    # 2. Speculative Fast-Path Retrieval
-    try:
-        speculative_docs = search_engine.hybrid_search(query_text=question, top_k=3)
-        if speculative_docs and len(speculative_docs) > 0 and speculative_docs[0].score >= 0.65:
-            query = question
-            log_msg = f"[Action: Generate Query] Fast-path speculative match found (score={speculative_docs[0].score:.3f}). Skipping LLM query reformulation."
-            print(f"[LangGraph Trace] {log_msg}")
-            trace.append(log_msg)
-            return {
-                "query": query,
-                "execution_trace": trace,
-                "retry_count": state.get("retry_count", 0),
-                "prompt_tokens": p_tok,
-                "completion_tokens": c_tok,
-                "fast_path": True,
-                "is_conversational": False
-            }
-    except Exception as se:
-        print(f"[MedicalAgent] Speculative search skipped: {se}")
+    # Check for short affirmative response (e.g. "yes", "sure", "tell me more", "correct", "okay")
+    affirmative_triggers = ["yes", "sure", "yeah", "yep", "ok", "okay", "please", "tell me more", "go ahead", "of course", "correct", "absolutely", "i would", "yes please"]
+    is_affirmative = any(clean_q == a or clean_q.startswith(a + " ") or clean_q.startswith(a + ",") or clean_q.startswith(a + ".") or clean_q.startswith(a + "!") for a in affirmative_triggers) and len(clean_q.split()) <= 6
+
+    # 2. Speculative Fast-Path Retrieval (Only if not a short affirmative response)
+    if not is_affirmative:
+        try:
+            speculative_docs = search_engine.hybrid_search(query_text=question, top_k=3)
+            if speculative_docs and len(speculative_docs) > 0 and speculative_docs[0].score >= 0.65:
+                query = question
+                log_msg = f"[Action: Generate Query] Fast-path speculative match found (score={speculative_docs[0].score:.3f}). Skipping LLM query reformulation."
+                print(f"[LangGraph Trace] {log_msg}")
+                trace.append(log_msg)
+                return {
+                    "query": query,
+                    "execution_trace": trace,
+                    "retry_count": state.get("retry_count", 0),
+                    "prompt_tokens": p_tok,
+                    "completion_tokens": c_tok,
+                    "fast_path": True,
+                    "is_conversational": False
+                }
+        except Exception as se:
+            print(f"[MedicalAgent] Speculative search skipped: {se}")
 
     history_str = ""
     if history:
         history_str = "Conversation History:\n" + "\n".join([f"{h['role']}: {h['content']}" for h in history]) + "\n\n"
 
-    prompt = f"{history_str}User Question: '{question}'\nFormulate a short standalone medical search query using clear medical terms. Output ONLY the query text without any preamble."
+    if is_affirmative and history:
+        last_assistant_msg = ""
+        for h in reversed(history):
+            if h.get("role") in ["assistant", "bot"]:
+                last_assistant_msg = h.get("content", "")
+                break
+
+        prompt = f"{history_str}Last Assistant Offer/Question: '{last_assistant_msg}'\nUser Response: '{question}'\n\nThe user responded YES/AFFIRMATIVE to the assistant's previous question or topic offer. Formulate a short standalone medical search query using clear medical terms to search for the specific topic offered in the assistant's question. Output ONLY the query text without preamble."
+    else:
+        prompt = f"{history_str}User Question: '{question}'\nFormulate a short standalone medical search query using clear medical terms. Output ONLY the query text without any preamble."
+
     raw_res, model, p, c = llm_client.invoke(prompt, temperature=0.1)
-    query = raw_res.strip().strip('"').split("\n")[0]
+    
+    # Sanitize generated query from preambles or quotes
+    query = raw_res.strip().strip('"').strip("'").split("\n")[0]
+    for prefix in ["query:", "search query:", "medical query:", "here is the search query:", "here is:", "standalone query:"]:
+        if query.lower().startswith(prefix):
+            query = query[len(prefix):].strip()
+            
+    # Fallback to original user question if query formulation returned empty or invalid string
+    if not query or len(query) < 2:
+        query = question
     
     log_msg = f"[Action: Generate Query] Formulated query: '{query}'"
     print(f"[LangGraph Trace] {log_msg}")
@@ -170,9 +194,24 @@ def generate_answer_node(state: GraphState) -> Dict[str, Any]:
         history_str = "Conversation History:\n" + "\n".join([f"{h['role']}: {h['content']}" for h in history]) + "\n\n"
         
     doc_context = "\n\n".join([f"Category: {d['focus_area']}\nQ: {d['question']}\nA: {d['answer']}" for d in docs])
-    prompt = f"You are a knowledgeable and compassionate Medical QA Assistant.\n{history_str}Answer the user question based strictly on the retrieved medical context below.\n\nQuestion: {question}\n\nRetrieved Context:\n{doc_context}\n\nProvide a clear, accurate, evidence-based answer. Conclude by asking if the user has follow-up questions:"
+    prompt = f"You are a knowledgeable and compassionate Medical QA Assistant.\n{history_str}Answer the user question based strictly on the retrieved medical context below.\n\nQuestion: {question}\n\nRetrieved Context:\n{doc_context}\n\nProvide a clear, accurate, evidence-based answer. Conclude by politely asking a follow-up offer question that the user can naturally answer with 'yes', 'sure', or 'correct' (for example: 'Would you like to know more about AIDS?' or 'Would you like to learn about available treatment options?'). Do NOT include headers or labels like '**Suggested follow-up question:**' or 'Follow-up question:'."
     
     res, model, p, c = llm_client.invoke(prompt, temperature=0.3)
+    
+    # Strip any explicit follow-up labels if generated by LLM
+    for label in [
+        "**Suggested follow-up question:**",
+        "**Suggested Follow-up Question:**",
+        "**Suggested follow up question:**",
+        "Suggested follow-up question:",
+        "Suggested Follow-up Question:",
+        "Suggested follow up question:",
+        "**Follow-up question:**",
+        "**Follow-up Question:**",
+        "Follow-up question:",
+        "Follow-up Question:"
+    ]:
+        res = res.replace(label, "").strip()
     
     log_msg = f"[Action: Generate Answer] Synthesized candidate answer ({len(res)} chars)"
     print(f"[LangGraph Trace] {log_msg}")

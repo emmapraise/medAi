@@ -2,6 +2,7 @@ from fastapi import APIRouter, HTTPException, Query
 from app.services.analytics_service import analytics_service
 from app.db import SessionLocal
 from app.models import RAGQueryLog, ConversationSession
+from app.schemas import FeedbackRequest, FeedbackResponse
 
 router = APIRouter()
 
@@ -9,6 +10,18 @@ router = APIRouter()
 def get_performance_summary():
     try:
         return analytics_service.get_summary()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.post("/feedback", response_model=FeedbackResponse, summary="Submit User Feedback (Thumbs Up / Down)")
+def submit_feedback(payload: FeedbackRequest):
+    try:
+        success = analytics_service.record_feedback(payload.log_id, payload.feedback, payload.comment)
+        if not success:
+            raise HTTPException(status_code=404, detail="Query log record not found")
+        return FeedbackResponse(status="success", log_id=payload.log_id, feedback=payload.feedback)
+    except HTTPException as he:
+        raise he
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -27,6 +40,8 @@ def get_query_logs(limit: int = Query(20, ge=1, le=100), offset: int = Query(0, 
                 "is_relevant": log.is_relevant,
                 "is_grounded": log.is_grounded,
                 "is_useful": log.is_useful,
+                "user_feedback": log.user_feedback,
+                "feedback_comment": log.feedback_comment,
                 "model_used": log.model_used,
                 "latency_seconds": round(getattr(log, "latency_seconds", 0.0), 2),
                 "total_tokens": log.total_tokens,

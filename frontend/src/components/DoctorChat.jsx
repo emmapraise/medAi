@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from "react";
-import { User, Bot, Send, Check, ChevronDown, Zap, Coins, DollarSign, ShieldCheck, Stethoscope, BookOpen, Copy, Edit3, ThumbsUp, ThumbsDown } from "lucide-react";
+import { User, Bot, Send, Check, ChevronDown, ShieldCheck, Stethoscope, BookOpen, Copy, Edit3, ThumbsUp, ThumbsDown } from "lucide-react";
 
 export default function DoctorChat({ sessionId, loadedHistory, onMessageSent }) {
   const [messages, setMessages] = useState([
@@ -13,7 +13,6 @@ export default function DoctorChat({ sessionId, loadedHistory, onMessageSent }) 
   const [loading, setLoading] = useState(false);
   const [loadingStep, setLoadingStep] = useState(0);
   const [openTraceId, setOpenTraceId] = useState(null);
-  const [copiedId, setCopiedId] = useState(null);
   const [feedbackState, setFeedbackState] = useState({});
   const chatBottomRef = useRef(null);
 
@@ -23,6 +22,44 @@ export default function DoctorChat({ sessionId, loadedHistory, onMessageSent }) 
     "Analyzing symptoms & formulating response...",
     "Fact-checking response for accuracy and safety..."
   ];
+
+  const handleFeedback = async (msgId, traceId, logId, value) => {
+    setFeedbackState((prev) => ({ ...prev, [msgId]: value }));
+    
+    // 1. Submit to Langfuse if traceId available
+    if (traceId) {
+      try {
+        await fetch("/api/v1/feedback", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            trace_id: traceId,
+            value: value,
+            name: "user-feedback",
+            comment: value === 1.0 ? "User marked answer helpful (Thumbs Up)" : "User marked answer unhelpful (Thumbs Down)"
+          })
+        });
+      } catch (e) {
+        console.warn("Langfuse feedback submission error:", e);
+      }
+    }
+
+    // 2. Submit to Analytics DB if logId available
+    if (logId) {
+      try {
+        await fetch("/api/v1/analytics/feedback", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            log_id: logId,
+            feedback: value === 1.0 ? "positive" : "negative"
+          })
+        });
+      } catch (err) {
+        console.warn("Analytics feedback error:", err);
+      }
+    }
+  };
 
   // Update messages when a past session is selected
   useEffect(() => {
@@ -42,6 +79,7 @@ export default function DoctorChat({ sessionId, loadedHistory, onMessageSent }) 
         });
         formatted.push({
           id: "bot-" + msg.id,
+          logId: msg.id,
           role: "bot",
           content: msg.answer,
           trace: msg.execution_trace || [],
@@ -49,6 +87,7 @@ export default function DoctorChat({ sessionId, loadedHistory, onMessageSent }) 
           tokens: msg.total_tokens,
           costUsd: msg.estimated_cost_usd,
           isGrounded: msg.is_grounded,
+          userFeedback: msg.user_feedback,
           turns: 1
         });
       });
@@ -117,6 +156,7 @@ export default function DoctorChat({ sessionId, loadedHistory, onMessageSent }) 
           ...prev,
           {
             id: "bot-" + Date.now(),
+            logId: data.id,
             role: "bot",
             content: data.answer,
             trace: data.execution_trace || [],
@@ -141,25 +181,6 @@ export default function DoctorChat({ sessionId, loadedHistory, onMessageSent }) 
         ...prev,
         { id: "err-" + Date.now(), role: "system", content: "Connection Error: Could not reach the server." }
       ]);
-    }
-  };
-
-  const handleFeedback = async (msgId, traceId, value) => {
-    if (!traceId) return;
-    setFeedbackState((prev) => ({ ...prev, [msgId]: value }));
-    try {
-      await fetch("/api/v1/feedback", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          trace_id: traceId,
-          value: value,
-          name: "user-feedback",
-          comment: value === 1.0 ? "User marked answer helpful (Thumbs Up)" : "User marked answer unhelpful (Thumbs Down)"
-        })
-      });
-    } catch (e) {
-      console.warn("Feedback submission error:", e);
     }
   };
 
@@ -207,30 +228,33 @@ export default function DoctorChat({ sessionId, loadedHistory, onMessageSent }) 
               )}
 
               {msg.role === "bot" && (
-                <div style={{ display: "flex", justifyContent: "flex-end", alignItems: "center", marginTop: "8px", gap: "8px" }}>
-                  {msg.traceId && (
-                    <div style={{ display: "flex", alignItems: "center", gap: "4px", marginRight: "auto" }}>
-                      <span style={{ fontSize: "11px", color: "var(--text-muted, #888)", marginRight: "4px" }}>Helpful?</span>
-                      <button
-                        type="button"
-                        className="action-link-btn"
-                        style={{ color: feedbackState[msg.id] === 1.0 ? "#00e676" : undefined }}
-                        onClick={() => handleFeedback(msg.id, msg.traceId, 1.0)}
-                        title="Helpful (Thumbs Up)"
-                      >
-                        <ThumbsUp size={12} />
-                      </button>
-                      <button
-                        type="button"
-                        className="action-link-btn"
-                        style={{ color: feedbackState[msg.id] === 0.0 ? "#ff5252" : undefined }}
-                        onClick={() => handleFeedback(msg.id, msg.traceId, 0.0)}
-                        title="Not helpful (Thumbs Down)"
-                      >
-                        <ThumbsDown size={12} />
-                      </button>
-                    </div>
-                  )}
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: "8px" }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                    <span style={{ fontSize: "11px", color: "var(--text-muted, #888)", marginRight: "2px" }}>Helpful?</span>
+                    <button
+                      type="button"
+                      className={`action-link-btn ${feedbackState[msg.id] === 1.0 || (msg.userFeedback === "positive" && feedbackState[msg.id] === undefined) ? "active-thumb-up" : ""}`}
+                      style={{ color: feedbackState[msg.id] === 1.0 ? "#00e676" : undefined }}
+                      onClick={() => handleFeedback(msg.id, msg.traceId, msg.logId, 1.0)}
+                      title="Helpful (Thumbs Up)"
+                    >
+                      <ThumbsUp size={13} />
+                    </button>
+                    <button
+                      type="button"
+                      className={`action-link-btn ${feedbackState[msg.id] === 0.0 || (msg.userFeedback === "negative" && feedbackState[msg.id] === undefined) ? "active-thumb-down" : ""}`}
+                      style={{ color: feedbackState[msg.id] === 0.0 ? "#ff5252" : undefined }}
+                      onClick={() => handleFeedback(msg.id, msg.traceId, msg.logId, 0.0)}
+                      title="Not helpful (Thumbs Down)"
+                    >
+                      <ThumbsDown size={13} />
+                    </button>
+                    {feedbackState[msg.id] !== undefined && (
+                      <span style={{ fontSize: "11px", color: "var(--accent-cyan)", marginLeft: "4px" }}>
+                        Feedback saved!
+                      </span>
+                    )}
+                  </div>
 
                   <button
                     type="button"
@@ -272,12 +296,9 @@ export default function DoctorChat({ sessionId, loadedHistory, onMessageSent }) 
                 </div>
               )}
 
-              {msg.latencySeconds && (
-                <div className="msg-meta-pill">
-                  <span><Zap size={12} /> {msg.latencySeconds}s response time</span>
-                  <span><ShieldCheck size={12} /> Fact-Checked: {(msg.isGrounded || "").toUpperCase()}</span>
-                  <span><Coins size={12} /> {msg.tokens.toLocaleString()} tokens</span>
-                  <span><DollarSign size={12} /> ${msg.costUsd}</span>
+              {msg.isGrounded && msg.isGrounded !== "unknown" && (
+                <div className="msg-meta-pill" style={{ display: "inline-flex", marginTop: "8px" }}>
+                  <span><ShieldCheck size={12} /> Fact-Checked: {msg.isGrounded.toUpperCase()}</span>
                 </div>
               )}
             </div>

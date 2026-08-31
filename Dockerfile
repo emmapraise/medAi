@@ -7,6 +7,10 @@ COPY frontend/ ./
 RUN npm run build
 
 FROM python:3.11-slim
+
+# Copy official uv binary from Astral
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
+
 WORKDIR /app
 
 # Install system dependencies
@@ -15,10 +19,17 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     && rm -rf /var/lib/apt/lists/*
 
+# Copy lockfiles and install dependencies via uv
+COPY pyproject.toml ./
+RUN uv sync --no-dev --no-cache
+
+# Pre-download & cache model weights inside container image for instant startup (with fallback)
+RUN uv run python -c "from sentence_transformers import SentenceTransformer; from fastembed import SparseTextEmbedding; SentenceTransformer('emmapraise/pubmedbert-base-embeddings-onnx', backend='onnx', model_kwargs={'provider': 'CPUExecutionProvider'}); SparseTextEmbedding('Qdrant/bm25')" || true
+
+# Copy application source code and built frontend dist
 COPY app/ ./app/
 COPY main.py ./main.py
-COPY dataset/ ./dataset/
 COPY --from=frontend-builder /app/frontend/dist ./frontend/dist
 
-EXPOSE 8000
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
+EXPOSE 8080 8000
+CMD ["sh", "-c", "uv run uvicorn main:app --host 0.0.0.0 --port ${PORT:-8080} --workers 1"]
