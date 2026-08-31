@@ -3,7 +3,7 @@ name = "mediqa-bot"
 version = "0.1.0"
 description = "Medical QA Bot powered by Qdrant Hybrid Search & Groq LLMs"
 readme = "README.md"
-requires-python = ">=3.14"
+requires-python = ">=3.11"
 dependencies = [
     "fastapi>=0.141.1",
     "fastembed>=0.8.0",
@@ -14,7 +14,9 @@ dependencies = [
     "langchain-openai>=1.4.1",
     "langgraph>=1.2.10",
     "minsearch>=0.2.0",
+    "onnxruntime>=1.18.0",
     "openai>=2.48.0",
+    "optimum>=1.24.0",
     "pandas>=3.0.5",
     "pgvector>=0.5.0",
     "psycopg2-binary>=2.9.12",
