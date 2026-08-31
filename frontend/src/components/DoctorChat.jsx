@@ -1,14 +1,8 @@
 import React, { useState, useRef, useEffect } from "react";
 import { User, Bot, Send, Check, ChevronDown, ShieldCheck, Stethoscope, BookOpen, Copy, Edit3, ThumbsUp, ThumbsDown } from "lucide-react";
 
-export default function DoctorChat({ sessionId, loadedHistory, onMessageSent }) {
-  const [messages, setMessages] = useState([
-    {
-      id: "welcome",
-      role: "system",
-      content: "Hello! I am your MediQA AI Assistant 🩺. Ask me any health or medical question (e.g. 'What are the symptoms of Glaucoma?' or 'How do I know if a baby has liver cancer?'). I analyze medical literature and double-check every answer against verified clinical sources."
-    }
-  ]);
+export default function DoctorChat({ sessionId, onMessageSent }) {
+  const [messages, setMessages] = useState([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const [loadingStep, setLoadingStep] = useState(0);
@@ -22,6 +16,86 @@ export default function DoctorChat({ sessionId, loadedHistory, onMessageSent }) 
     "Analyzing symptoms & formulating response...",
     "Fact-checking response for accuracy and safety..."
   ];
+
+  // Fetch session messages directly on mount or when sessionId changes
+  useEffect(() => {
+    let active = true;
+
+    const fetchSessionHistory = async () => {
+      try {
+        const res = await fetch(`/api/v1/analytics/sessions/${sessionId}`);
+        if (res.ok) {
+          const data = await res.json();
+          if (active && data.messages && Array.isArray(data.messages) && data.messages.length > 0) {
+            const formatted = [
+              {
+                id: "welcome",
+                role: "system",
+                content: `Loaded past session context: ${sessionId}`
+              }
+            ];
+            data.messages.forEach((msg, idx) => {
+              let trace = [];
+              try {
+                if (Array.isArray(msg.execution_trace)) {
+                  trace = msg.execution_trace;
+                } else if (typeof msg.execution_trace === "string" && msg.execution_trace.trim()) {
+                  trace = JSON.parse(msg.execution_trace);
+                }
+              } catch {
+                trace = [];
+              }
+
+              formatted.push({
+                id: "user-" + (msg.id || idx),
+                role: "user",
+                content: typeof msg.question === "string" ? msg.question : String(msg.question || "")
+              });
+              formatted.push({
+                id: "bot-" + (msg.id || idx),
+                logId: msg.id,
+                role: "bot",
+                content: typeof msg.answer === "string" ? msg.answer : String(msg.answer || ""),
+                trace: trace,
+                isGrounded: msg.is_grounded,
+                userFeedback: msg.user_feedback,
+                turns: 1
+              });
+            });
+            setMessages(formatted);
+            return;
+          }
+        }
+      } catch (err) {
+        console.error("Failed to load session:", err);
+      }
+
+      if (active) {
+        setMessages([
+          {
+            id: "welcome",
+            role: "system",
+            content: "Hello! I am your MediQA AI Assistant 🩺. Ask me any health or medical question (e.g. 'What are the symptoms of Glaucoma?' or 'How do I know if a baby has liver cancer?'). I analyze medical literature and double-check every answer against verified clinical sources."
+          }
+        ]);
+      }
+    };
+
+    fetchSessionHistory();
+    return () => { active = false; };
+  }, [sessionId]);
+
+  useEffect(() => {
+    let interval;
+    if (loading) {
+      interval = setInterval(() => {
+        setLoadingStep((prev) => (prev + 1) % loadingMessages.length);
+      }, 2500);
+    } else {
+      setLoadingStep(0);
+    }
+    return () => clearInterval(interval);
+  }, [loading]);
 
   const handleFeedback = async (msgId, traceId, logId, value) => {
     setFeedbackState((prev) => ({ ...prev, [msgId]: value }));
@@ -60,72 +134,6 @@ export default function DoctorChat({ sessionId, loadedHistory, onMessageSent }) 
       }
     }
   };
-
-  // Update messages when a past session is selected
-  useEffect(() => {
-    if (loadedHistory && Array.isArray(loadedHistory) && loadedHistory.length > 0) {
-      const formatted = [
-        {
-          id: "welcome",
-          role: "system",
-          content: `Loaded past session context: ${sessionId}`
-        }
-      ];
-      loadedHistory.forEach((msg, idx) => {
-        let trace = [];
-        try {
-          if (Array.isArray(msg.execution_trace)) {
-            trace = msg.execution_trace;
-          } else if (typeof msg.execution_trace === "string" && msg.execution_trace.trim()) {
-            trace = JSON.parse(msg.execution_trace);
-          }
-        } catch {
-          trace = [];
-        }
-
-        formatted.push({
-          id: "user-" + (msg.id || idx),
-          role: "user",
-          content: msg.question || ""
-        });
-        formatted.push({
-          id: "bot-" + (msg.id || idx),
-          logId: msg.id,
-          role: "bot",
-          content: msg.answer || "",
-          trace: trace,
-          isGrounded: msg.is_grounded,
-          userFeedback: msg.user_feedback,
-          turns: 1
-        });
-      });
-      setMessages(formatted);
-    } else {
-      setMessages([
-        {
-          id: "welcome",
-          role: "system",
-          content: "Hello! I am your MediQA AI Assistant 🩺. Ask me any health or medical question (e.g. 'What are the symptoms of Glaucoma?' or 'How do I know if a baby has liver cancer?'). I analyze medical literature and double-check every answer against verified clinical sources."
-        }
-      ]);
-    }
-  }, [sessionId, loadedHistory]);
-
-  useEffect(() => {
-    let interval;
-    if (loading) {
-      interval = setInterval(() => {
-        setLoadingStep((prev) => (prev + 1) % loadingMessages.length);
-      }, 2500);
-    } else {
-      setLoadingStep(0);
-    }
-    return () => clearInterval(interval);
-  }, [loading]);
-
-  useEffect(() => {
-    chatBottomRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages, loading, loadingStep]);
 
   const handleCopy = (text, id) => {
     navigator.clipboard.writeText(text);

@@ -6,7 +6,6 @@ export default function App() {
   const [activeTab, setActiveTab] = useState("chat");
   const [sessionId, setSessionId] = useState(() => "patient_session_" + Math.floor(1000 + Math.random() * 9000));
   const [pastSessions, setPastSessions] = useState([]);
-  const [loadedHistory, setLoadedHistory] = useState([]);
   const [deferredPrompt, setDeferredPrompt] = useState(null);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
@@ -40,24 +39,12 @@ export default function App() {
   const handleNewSession = () => {
     const newId = "patient_session_" + Math.floor(1000 + Math.random() * 9000);
     setSessionId(newId);
-    setLoadedHistory([]);
-    setActiveTab("chat");
     setMobileMenuOpen(false);
   };
 
-  const handleSelectSession = async (sId) => {
+  const handleSelectSession = (sId) => {
     setSessionId(sId);
-    setActiveTab("chat");
     setMobileMenuOpen(false);
-    try {
-      const res = await fetch(`/api/v1/analytics/sessions/${sId}`);
-      if (res.ok) {
-        const data = await res.json();
-        setLoadedHistory(data.messages || []);
-      }
-    } catch (err) {
-      console.error(err);
-    }
   };
 
   const handleDeleteSession = async (e, sId) => {
@@ -181,7 +168,6 @@ export default function App() {
           <DoctorChat
             key={sessionId}
             sessionId={sessionId}
-            loadedHistory={loadedHistory}
             onMessageSent={fetchPastSessions}
           />
         </div>
