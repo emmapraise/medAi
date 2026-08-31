@@ -69,31 +69,33 @@ class AgentLLMClient:
 
             return content, model_used, p_tokens, c_tokens
         except Exception as e:
-            err_msg = str(e).lower()
-            if ("429" in err_msg or "resource_exhausted" in err_msg or "rate" in err_msg) and self.fallback_llm and self.llm != self.fallback_llm:
-                print("[MedicalAgent] Gemini rate limited (429). Falling back to OpenAI gpt-4o-mini...")
-                model_used = "gpt-4o-mini"
-                res = self.fallback_llm.invoke(prompt, **kwargs)
-                content = str(res.content).strip()
-                p_tokens = len(prompt) // 4
-                c_tokens = len(content) // 4
-                if hasattr(res, "response_metadata") and isinstance(res.response_metadata, dict):
-                    token_usage = res.response_metadata.get("token_usage") or res.response_metadata.get("usage", {})
-                    if token_usage:
-                        p_tokens = token_usage.get("prompt_tokens", p_tokens)
-                        c_tokens = token_usage.get("completion_tokens", c_tokens)
-
+            if self.fallback_llm and self.llm != self.fallback_llm:
+                print(f"[MedicalAgent] Primary LLM error ({e}). Falling back to OpenAI (gpt-4o-mini)...")
                 try:
-                    lf = get_client()
-                    lf.update_current_generation(
-                        model=model_used,
-                        model_parameters={"temperature": temperature, "max_tokens": max_tokens},
-                        usage_details={"input": p_tokens, "output": c_tokens, "total": p_tokens + c_tokens}
-                    )
-                except Exception:
-                    pass
+                    model_used = "gpt-4o-mini"
+                    res = self.fallback_llm.invoke(prompt, **kwargs)
+                    content = str(res.content).strip()
+                    p_tokens = len(prompt) // 4
+                    c_tokens = len(content) // 4
+                    if hasattr(res, "response_metadata") and isinstance(res.response_metadata, dict):
+                        token_usage = res.response_metadata.get("token_usage") or res.response_metadata.get("usage", {})
+                        if token_usage:
+                            p_tokens = token_usage.get("prompt_tokens", p_tokens)
+                            c_tokens = token_usage.get("completion_tokens", c_tokens)
 
-                return content, model_used, p_tokens, c_tokens
+                    try:
+                        lf = get_client()
+                        lf.update_current_generation(
+                            model=model_used,
+                            model_parameters={"temperature": temperature, "max_tokens": max_tokens},
+                            usage_details={"input": p_tokens, "output": c_tokens, "total": p_tokens + c_tokens}
+                        )
+                    except Exception:
+                        pass
+
+                    return content, model_used, p_tokens, c_tokens
+                except Exception as fe:
+                    print(f"[MedicalAgent Error] Fallback LLM also failed: {fe}")
             raise e
 
 llm_client = AgentLLMClient()
