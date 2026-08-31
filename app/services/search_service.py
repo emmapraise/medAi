@@ -31,16 +31,17 @@ class SearchEngineService:
             self.client = QdrantClient(":memory:")
 
         # PubMedBERT ONNX Dense model setup
-        print(f"[SearchEngine] Loading ONNX Dense Model: {settings.DENSE_MODEL_NAME}...")
+        model_target = "models/pubmedbert-onnx" if os.path.isdir("models/pubmedbert-onnx") else settings.DENSE_MODEL_NAME
+        print(f"[SearchEngine] Loading ONNX Dense Model from: {model_target}...")
         try:
             self.dense_model = SentenceTransformer(
-                settings.DENSE_MODEL_NAME,
+                model_target,
                 backend="onnx",
                 model_kwargs={"provider": "CPUExecutionProvider"}
             )
         except Exception as onnx_err:
-            print(f"[SearchEngine] ONNX loading notice ({onnx_err}), attempting standard SentenceTransformer loader...")
-            self.dense_model = SentenceTransformer(settings.DENSE_MODEL_NAME, device=device)
+            print(f"[SearchEngine] ONNX loading notice ({onnx_err}), attempting standard loader...")
+            self.dense_model = SentenceTransformer(model_target, device=device)
 
         # FastEmbed BM25 Sparse model setup
         print("[SearchEngine] Loading FastEmbed BM25 Sparse Vectorizer (Qdrant/bm25)...")

@@ -7,8 +7,8 @@ from app.models import ConversationSession, RAGQueryLog
 
 class AnalyticsService:
     def initialize_db(self):
-        Base.metadata.create_all(bind=engine)
         try:
+            Base.metadata.create_all(bind=engine)
             with engine.connect() as conn:
                 url_str = str(engine.url).lower()
                 if "postgresql" in url_str:
@@ -23,9 +23,9 @@ class AnalyticsService:
                     if "feedback_comment" not in existing_cols:
                         conn.execute(text("ALTER TABLE rag_query_logs ADD COLUMN feedback_comment TEXT;"))
                     conn.commit()
+            print("[AnalyticsService] Database tables verified & initialized.")
         except Exception as e:
-            print(f"[AnalyticsService] Column migration check notice: {e}")
-        print("[AnalyticsService] PostgreSQL Database tables verified & initialized.")
+            print(f"[AnalyticsService] DB initialization notice ({e}). Continuing with in-memory fallback if needed.")
 
     def calculate_cost(self, model_name: str, prompt_tokens: int, completion_tokens: int) -> float:
         model = model_name.lower()

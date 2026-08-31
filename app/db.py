@@ -7,7 +7,19 @@ load_dotenv()
 
 DATABASE_URL = os.getenv("DB") or os.getenv("DATABASE_URL") or "postgresql://myuser:mypassword@localhost:5433/medical_db"
 
-engine = create_engine(DATABASE_URL, pool_pre_ping=True, echo=False)
+if DATABASE_URL.startswith("postgres://"):
+    DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)
+
+try:
+    engine = create_engine(
+        DATABASE_URL,
+        pool_pre_ping=True,
+        echo=False,
+        connect_args={"connect_timeout": 5} if "postgresql" in DATABASE_URL else {}
+    )
+except Exception as e:
+    print(f"[DB] Engine creation fallback: {e}")
+    engine = create_engine("sqlite:///:memory:")
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
 

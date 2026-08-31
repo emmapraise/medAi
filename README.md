@@ -4,7 +4,7 @@
 [![React PWA](https://img.shields.io/badge/React_PWA-20232A?style=for-the-badge&logo=react&logoColor=61DAFB)](https://react.dev/)
 [![LangGraph](https://img.shields.io/badge/LangGraph-FF6F61?style=for-the-badge&logo=python&logoColor=white)](https://www.langchain.com/langgraph)
 [![Qdrant](https://img.shields.io/badge/Qdrant-DC2626?style=for-the-badge&logo=qdrant&logoColor=white)](https://qdrant.tech/)
-[![PyTorch](https://img.shields.io/badge/PubMedBERT-EE4C2C?style=for-the-badge&logo=pytorch&logoColor=white)](https://huggingface.co/NeuML/pubmedbert-base-embeddings)
+[![PyTorch](https://img.shields.io/badge/PubMedBERT_ONNX-EE4C2C?style=for-the-badge&logo=huggingface&logoColor=white)](https://huggingface.co/emmapraise/pubmedbert-base-embeddings-onnx)
 [![PostgreSQL](https://img.shields.io/badge/PostgreSQL-336791?style=for-the-badge&logo=postgresql&logoColor=white)](https://www.postgresql.org/)
 [![Live Demo](https://img.shields.io/badge/🚀_Live_Demo-Google_Cloud_Run-4285F4?style=for-the-badge&logo=googlecloud&logoColor=white)](https://medai-19247955175.europe-west1.run.app/)
 
@@ -12,7 +12,7 @@
 > 
 > **Reviewers & Evaluators:** The application is fully deployed and accessible on Google Cloud Run! Please feel free to check out the live demo to experience the Doctor Chat PWA, interactive hybrid search, and real-time analytics in action.
 
-**MediQA Bot** is a production-ready, evidence-based Medical Question-Answering application powered by **Self-Corrective Retrieval-Augmented Generation (CRAG)** via **LangGraph**, **Qdrant Cloud Hybrid Search** (768-dim PubMedBERT Dense Vectors + FastEmbed BM25 Sparse Vectors with Reciprocal Rank Fusion), **PostgreSQL Analytics & Cost Tracking**, and a mobile-responsive **React Progressive Web App (PWA)**.
+**MediQA Bot** is a production-ready, evidence-based Medical Question-Answering application powered by **Self-Corrective Retrieval-Augmented Generation (CRAG)** via **LangGraph**, **Qdrant Cloud Hybrid Search** (768-dim PubMedBERT ONNX Dense Vectors + FastEmbed BM25 Sparse Vectors with Reciprocal Rank Fusion), **PostgreSQL Analytics & Cost Tracking**, and a mobile-responsive **React Progressive Web App (PWA)**.
 
 ---
 
@@ -24,7 +24,7 @@ The medical knowledge base backing MediQA Bot is built from the **MedQuAD** (Med
 * **Origin**: Created by 12 National Institutes of Health (NIH) institutes (including NCI, NHLBI, NIDDK, NINDS, and MedlinePlus).
 * **Coverage**: Contains 16,400+ curated medical question-answer pairs covering diseases, symptoms, causes, diagnosis, treatments, clinical trials, and procedures.
 * **Vector Indexing**: The dataset is indexed into **Qdrant Cloud** using a hybrid dual-vector space:
-  - **Dense Embeddings**: `NeuML/pubmedbert-base-embeddings` (768-dimensional clinical domain PubMedBERT transformer model).
+  - **Dense Embeddings**: `emmapraise/pubmedbert-base-embeddings-onnx` (768-dimensional clinical domain PubMedBERT ONNX model).
   - **Sparse Embeddings**: `Qdrant/bm25` (FastEmbed BM25 sparse keyword vectors).
   - **Fusion Algorithm**: Reciprocal Rank Fusion (RRF) for combining dense semantic match scores with sparse exact keyword matches.
 
