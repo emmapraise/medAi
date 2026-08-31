@@ -20,7 +20,7 @@ class SearchResponse(BaseModel):
 class AskRequest(BaseModel):
     question: str = Field(..., description="Medical question for the AI agent", example="How do I know if a baby has liver cancer?")
     session_id: Optional[str] = Field(default="default_session", description="Session ID for follow-up questions", example="patient_session_101")
-    model: Optional[str] = Field(default=None, description="LLM model name to use (defaults to gemini-1.5-flash)")
+    model: Optional[str] = Field(default=None, description="LLM model name to use (defaults to gemini-2.5-flash)")
     max_turns: Optional[int] = Field(default=5, description="Maximum agent tool iterations", ge=1, le=10)
 
 class AskResponse(BaseModel):
@@ -42,15 +42,29 @@ class AskResponse(BaseModel):
     turns_executed: int
     trace_id: Optional[str] = None
 
-class FeedbackRequest(BaseModel):
+# --- Analytics DB Feedback (thumbs up/down stored to PostgreSQL) ---
+class AnalyticsFeedbackRequest(BaseModel):
     log_id: int = Field(..., description="Query log ID to record feedback for")
     feedback: str = Field(..., description="Feedback value: 'positive' (thumbs up) or 'negative' (thumbs down)")
     comment: Optional[str] = Field(default=None, description="Optional user comment")
 
-class FeedbackResponse(BaseModel):
+class AnalyticsFeedbackResponse(BaseModel):
     status: str
     log_id: int
     feedback: str
+
+# --- Langfuse Score Feedback (trace-level scores sent to Langfuse) ---
+class FeedbackRequest(BaseModel):
+    trace_id: str = Field(..., description="Langfuse trace ID", example="17a62465269b9427a8015c6aa8f58625")
+    value: float = Field(..., description="Score value (1.0 thumbs up, 0.0 thumbs down)", example=1.0)
+    name: Optional[str] = Field(default="user-feedback", description="Score metric name", example="user-feedback")
+    comment: Optional[str] = Field(default=None, description="Optional user comment or reason")
+
+class FeedbackResponse(BaseModel):
+    status: str
+    trace_id: str
+    name: str
+    value: float
 
 class IngestResponse(BaseModel):
     status: str
@@ -64,14 +78,3 @@ class HealthResponse(BaseModel):
     collection_exists: bool
     total_points: int
 
-class FeedbackRequest(BaseModel):
-    trace_id: str = Field(..., description="Langfuse trace ID", example="17a62465269b9427a8015c6aa8f58625")
-    value: float = Field(..., description="Score value (1.0 for thumbs up/positive, 0.0 for thumbs down/negative)", example=1.0)
-    name: Optional[str] = Field(default="user-feedback", description="Score metric name", example="user-feedback")
-    comment: Optional[str] = Field(default=None, description="Optional user comment or reason")
-
-class FeedbackResponse(BaseModel):
-    status: str
-    trace_id: str
-    name: str
-    value: float
