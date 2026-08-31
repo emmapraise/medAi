@@ -67,6 +67,21 @@ class MedicalAgentService:
             if prev_question and prev_answer:
                 history.append({"role": "user", "content": prev_question})
                 history.append({"role": "assistant", "content": prev_answer})
+        else:
+            try:
+                from app.db import SessionLocal
+                from app.models import RAGQueryLog
+                db = SessionLocal()
+                try:
+                    past_logs = db.query(RAGQueryLog).filter(RAGQueryLog.session_id == session_id).order_by(RAGQueryLog.id.asc()).all()
+                    for plog in past_logs:
+                        if plog.question and plog.answer:
+                            history.append({"role": "user", "content": plog.question})
+                            history.append({"role": "assistant", "content": plog.answer})
+                finally:
+                    db.close()
+            except Exception as e:
+                print(f"[MedicalAgent] DB history restoration notice: {e}")
 
         initial_state = {
             "question": question,

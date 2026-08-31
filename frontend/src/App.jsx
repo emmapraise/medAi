@@ -179,6 +179,7 @@ export default function App() {
 
         <div className="tab-content">
           <DoctorChat
+            key={sessionId}
             sessionId={sessionId}
             loadedHistory={loadedHistory}
             onMessageSent={fetchPastSessions}

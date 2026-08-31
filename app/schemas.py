@@ -20,7 +20,7 @@ class SearchResponse(BaseModel):
 class AskRequest(BaseModel):
     question: str = Field(..., description="Medical question for the AI agent", example="How do I know if a baby has liver cancer?")
     session_id: Optional[str] = Field(default="default_session", description="Session ID for follow-up questions", example="patient_session_101")
-    model: Optional[str] = Field(default="gemini-2.5-flash", description="LLM model name to use")
+    model: Optional[str] = Field(default=None, description="LLM model name to use (defaults to gemini-1.5-flash)")
     max_turns: Optional[int] = Field(default=5, description="Maximum agent tool iterations", ge=1, le=10)
 
 class AskResponse(BaseModel):
