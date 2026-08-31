@@ -23,8 +23,17 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY pyproject.toml ./
 RUN uv sync --no-dev --no-cache
 
-# Pre-download & cache model weights inside container image for instant startup (with fallback)
-RUN uv run python -c "from sentence_transformers import SentenceTransformer; from fastembed import SparseTextEmbedding; SentenceTransformer('emmapraise/pubmedbert-base-embeddings-onnx', backend='onnx', model_kwargs={'provider': 'CPUExecutionProvider'}); SparseTextEmbedding('Qdrant/bm25')" || true
+# Pre-download & save model weights during Docker BUILD time into /app/models/pubmedbert-onnx
+# This runs during Cloud Build (which has 8-16GB RAM), baking the ONNX files into the image.
+# At runtime on Cloud Run, it boots in seconds using ONLY ~900MB RAM!
+RUN uv run python -c "\
+from sentence_transformers import SentenceTransformer; \
+from fastembed import SparseTextEmbedding; \
+print('Baking ONNX model into container image at build time...'); \
+model = SentenceTransformer('emmapraise/pubmedbert-base-embeddings-onnx', backend='onnx', model_kwargs={'provider': 'CPUExecutionProvider'}); \
+model.save_pretrained('/app/models/pubmedbert-onnx'); \
+SparseTextEmbedding('Qdrant/bm25'); \
+print('Build-time model caching complete.')"
 
 # Copy application source code and built frontend dist
 COPY app/ ./app/
@@ -32,4 +41,4 @@ COPY main.py ./main.py
 COPY --from=frontend-builder /app/frontend/dist ./frontend/dist
 
 EXPOSE 8080 8000
-CMD ["sh", "-c", "uv run uvicorn main:app --host 0.0.0.0 --port ${PORT:-8080} --workers 1"]
+CMD ["sh", "-c", "uv run uvicorn main:app --host 0.0.0.0 --port ${PORT:-8080} --workers 1 --timeout-keep-alive 120"]

@@ -155,6 +155,10 @@ export default function DoctorChat({ sessionId, onMessageSent }) {
     setInput("");
     setLoading(true);
 
+    const controller = new AbortController();
+    // Cloud Run can take up to 60-90s for CRAG multi-turn — give it 120s before giving up
+    const timeoutId = setTimeout(() => controller.abort(), 120000);
+
     try {
       const res = await fetch("/api/v1/ask", {
         method: "POST",
@@ -162,8 +166,10 @@ export default function DoctorChat({ sessionId, onMessageSent }) {
         body: JSON.stringify({
           question: userMsg.content,
           session_id: sessionId
-        })
+        }),
+        signal: controller.signal
       });
+      clearTimeout(timeoutId);
 
       const data = await res.json();
       setLoading(false);
@@ -189,14 +195,22 @@ export default function DoctorChat({ sessionId, onMessageSent }) {
       } else {
         setMessages((prev) => [
           ...prev,
-          { id: "err-" + Date.now(), role: "system", content: "Apologies, an error occurred: " + (data.detail || "Unable to complete request.") }
+          { id: "err-" + Date.now(), role: "system", content: "⚠️ The server returned an error: " + (data.detail || "Unable to complete request.") }
         ]);
       }
     } catch (err) {
+      clearTimeout(timeoutId);
       setLoading(false);
+      const isTimeout = err.name === "AbortError";
       setMessages((prev) => [
         ...prev,
-        { id: "err-" + Date.now(), role: "system", content: "Connection Error: Could not reach the server." }
+        {
+          id: "err-" + Date.now(),
+          role: "system",
+          content: isTimeout
+            ? "⏱️ Request timed out after 2 minutes. The server may be under heavy load — please try again."
+            : "🔌 Connection Error: Could not reach the server. Please check your internet connection or try again shortly."
+        }
       ]);
     }
   };
