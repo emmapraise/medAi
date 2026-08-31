@@ -3,8 +3,10 @@ from typing import Dict, Any
 from app.agent.state import GraphState
 from app.agent.llm_client import llm_client
 from app.services.search_service import search_engine
+from langfuse import observe
 
 # Node 1: Formulate Search Query with Greeting & Fast-Path Detection
+@observe(as_type="chain", name="crag-formulate-query")
 def generate_query_node(state: GraphState) -> Dict[str, Any]:
     question = state["question"]
     history = state.get("history", [])
@@ -78,6 +80,7 @@ def generate_query_node(state: GraphState) -> Dict[str, Any]:
     }
 
 # Node 2: Retrieve Documents (Qdrant Search)
+@observe(as_type="chain", name="crag-retrieve-documents")
 def retrieve_node(state: GraphState) -> Dict[str, Any]:
     query = state["query"]
     trace = list(state.get("execution_trace", []))
@@ -96,6 +99,7 @@ def retrieve_node(state: GraphState) -> Dict[str, Any]:
     return {"documents": docs, "execution_trace": trace}
 
 # Node 3: Grade Documents Relevance
+@observe(as_type="chain", name="crag-grade-documents")
 def grade_documents_node(state: GraphState) -> Dict[str, Any]:
     question = state["question"]
     docs = state["documents"]
@@ -127,6 +131,7 @@ def grade_documents_node(state: GraphState) -> Dict[str, Any]:
     }
 
 # Node 4: Rewrite Query
+@observe(as_type="chain", name="crag-rewrite-query")
 def rewrite_query_node(state: GraphState) -> Dict[str, Any]:
     question = state["question"]
     current_retry = state.get("retry_count", 0) + 1
@@ -151,6 +156,7 @@ def rewrite_query_node(state: GraphState) -> Dict[str, Any]:
     }
 
 # Node 5: Generate Answer
+@observe(as_type="chain", name="crag-generate-answer")
 def generate_answer_node(state: GraphState) -> Dict[str, Any]:
     question = state["question"]
     docs = state["documents"]
@@ -180,6 +186,7 @@ def generate_answer_node(state: GraphState) -> Dict[str, Any]:
     }
 
 # Node 6: Grade Generation (Parallel Verification)
+@observe(as_type="chain", name="crag-grade-generation")
 def grade_generation_node(state: GraphState) -> Dict[str, Any]:
     question = state["question"]
     generation = state["generation"]

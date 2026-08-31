@@ -39,6 +39,7 @@ class AskResponse(BaseModel):
     total_tokens: int
     estimated_cost_usd: float
     turns_executed: int
+    trace_id: Optional[str] = None
 
 class IngestResponse(BaseModel):
     status: str
@@ -51,3 +52,15 @@ class HealthResponse(BaseModel):
     qdrant_url: str
     collection_exists: bool
     total_points: int
+
+class FeedbackRequest(BaseModel):
+    trace_id: str = Field(..., description="Langfuse trace ID", example="17a62465269b9427a8015c6aa8f58625")
+    value: float = Field(..., description="Score value (1.0 for thumbs up/positive, 0.0 for thumbs down/negative)", example=1.0)
+    name: Optional[str] = Field(default="user-feedback", description="Score metric name", example="user-feedback")
+    comment: Optional[str] = Field(default=None, description="Optional user comment or reason")
+
+class FeedbackResponse(BaseModel):
+    status: str
+    trace_id: str
+    name: str
+    value: float

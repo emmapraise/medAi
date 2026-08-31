@@ -2,6 +2,7 @@ import os
 from typing import Optional, Tuple
 from langchain_openai import ChatOpenAI
 from app.config import settings
+from langfuse import observe, get_client
 
 class AgentLLMClient:
     def __init__(self):
@@ -35,6 +36,7 @@ class AgentLLMClient:
             if not self.llm:
                 self.llm = self.fallback_llm
 
+    @observe(as_type="generation", name="llm-generation")
     def invoke(self, prompt: str, max_tokens: Optional[int] = None, temperature: float = 0.7) -> Tuple[str, str, int, int]:
         model_used = settings.DEFAULT_MODEL
         try:
@@ -55,6 +57,16 @@ class AgentLLMClient:
                     p_tokens = token_usage.get("prompt_tokens", p_tokens)
                     c_tokens = token_usage.get("completion_tokens", c_tokens)
 
+            try:
+                lf = get_client()
+                lf.update_current_generation(
+                    model=model_used,
+                    model_parameters={"temperature": temperature, "max_tokens": max_tokens},
+                    usage_details={"input": p_tokens, "output": c_tokens, "total": p_tokens + c_tokens}
+                )
+            except Exception:
+                pass
+
             return content, model_used, p_tokens, c_tokens
         except Exception as e:
             err_msg = str(e).lower()
@@ -70,6 +82,17 @@ class AgentLLMClient:
                     if token_usage:
                         p_tokens = token_usage.get("prompt_tokens", p_tokens)
                         c_tokens = token_usage.get("completion_tokens", c_tokens)
+
+                try:
+                    lf = get_client()
+                    lf.update_current_generation(
+                        model=model_used,
+                        model_parameters={"temperature": temperature, "max_tokens": max_tokens},
+                        usage_details={"input": p_tokens, "output": c_tokens, "total": p_tokens + c_tokens}
+                    )
+                except Exception:
+                    pass
+
                 return content, model_used, p_tokens, c_tokens
             raise e
 

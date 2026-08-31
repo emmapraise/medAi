@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from "react";
-import { User, Bot, Send, Check, ChevronDown, Zap, Coins, DollarSign, ShieldCheck, Stethoscope, BookOpen, Copy, Edit3 } from "lucide-react";
+import { User, Bot, Send, Check, ChevronDown, Zap, Coins, DollarSign, ShieldCheck, Stethoscope, BookOpen, Copy, Edit3, ThumbsUp, ThumbsDown } from "lucide-react";
 
 export default function DoctorChat({ sessionId, loadedHistory, onMessageSent }) {
   const [messages, setMessages] = useState([
@@ -14,6 +14,7 @@ export default function DoctorChat({ sessionId, loadedHistory, onMessageSent }) 
   const [loadingStep, setLoadingStep] = useState(0);
   const [openTraceId, setOpenTraceId] = useState(null);
   const [copiedId, setCopiedId] = useState(null);
+  const [feedbackState, setFeedbackState] = useState({});
   const chatBottomRef = useRef(null);
 
   const loadingMessages = [
@@ -119,6 +120,7 @@ export default function DoctorChat({ sessionId, loadedHistory, onMessageSent }) 
             role: "bot",
             content: data.answer,
             trace: data.execution_trace || [],
+            traceId: data.trace_id,
             latencySeconds: data.latency_seconds,
             tokens: data.total_tokens,
             costUsd: data.estimated_cost_usd,
@@ -139,6 +141,25 @@ export default function DoctorChat({ sessionId, loadedHistory, onMessageSent }) 
         ...prev,
         { id: "err-" + Date.now(), role: "system", content: "Connection Error: Could not reach the server." }
       ]);
+    }
+  };
+
+  const handleFeedback = async (msgId, traceId, value) => {
+    if (!traceId) return;
+    setFeedbackState((prev) => ({ ...prev, [msgId]: value }));
+    try {
+      await fetch("/api/v1/feedback", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          trace_id: traceId,
+          value: value,
+          name: "user-feedback",
+          comment: value === 1.0 ? "User marked answer helpful (Thumbs Up)" : "User marked answer unhelpful (Thumbs Down)"
+        })
+      });
+    } catch (e) {
+      console.warn("Feedback submission error:", e);
     }
   };
 
@@ -186,7 +207,31 @@ export default function DoctorChat({ sessionId, loadedHistory, onMessageSent }) 
               )}
 
               {msg.role === "bot" && (
-                <div style={{ display: "flex", justifyContent: "flex-end", marginTop: "8px", gap: "8px" }}>
+                <div style={{ display: "flex", justifyContent: "flex-end", alignItems: "center", marginTop: "8px", gap: "8px" }}>
+                  {msg.traceId && (
+                    <div style={{ display: "flex", alignItems: "center", gap: "4px", marginRight: "auto" }}>
+                      <span style={{ fontSize: "11px", color: "var(--text-muted, #888)", marginRight: "4px" }}>Helpful?</span>
+                      <button
+                        type="button"
+                        className="action-link-btn"
+                        style={{ color: feedbackState[msg.id] === 1.0 ? "#00e676" : undefined }}
+                        onClick={() => handleFeedback(msg.id, msg.traceId, 1.0)}
+                        title="Helpful (Thumbs Up)"
+                      >
+                        <ThumbsUp size={12} />
+                      </button>
+                      <button
+                        type="button"
+                        className="action-link-btn"
+                        style={{ color: feedbackState[msg.id] === 0.0 ? "#ff5252" : undefined }}
+                        onClick={() => handleFeedback(msg.id, msg.traceId, 0.0)}
+                        title="Not helpful (Thumbs Down)"
+                      >
+                        <ThumbsDown size={12} />
+                      </button>
+                    </div>
+                  )}
+
                   <button
                     type="button"
                     className="action-link-btn"

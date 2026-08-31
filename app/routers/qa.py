@@ -1,7 +1,8 @@
 from fastapi import APIRouter, HTTPException
 from app.config import settings
-from app.schemas import AskRequest, AskResponse
+from app.schemas import AskRequest, AskResponse, FeedbackRequest, FeedbackResponse
 from app.services.agent_service import agent_service
+from langfuse import get_client
 
 router = APIRouter()
 
@@ -33,9 +34,31 @@ def ask_medical_agent(payload: AskRequest):
             completion_tokens=result["completion_tokens"],
             total_tokens=result["total_tokens"],
             estimated_cost_usd=result["estimated_cost_usd"],
-            turns_executed=result["turns_executed"]
+            turns_executed=result["turns_executed"],
+            trace_id=result.get("trace_id")
         )
     except HTTPException as he:
         raise he
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+@router.post("/feedback", response_model=FeedbackResponse, summary="Submit User Thumbs/Rating Score to Langfuse Trace")
+def submit_feedback(payload: FeedbackRequest):
+    try:
+        score_name = payload.name or "user-feedback"
+        lf = get_client()
+        lf.create_score(
+            trace_id=payload.trace_id,
+            name=score_name,
+            value=float(payload.value),
+            data_type="NUMERIC" if payload.value not in (0.0, 1.0) else "BOOLEAN",
+            comment=payload.comment
+        )
+        return FeedbackResponse(
+            status="success",
+            trace_id=payload.trace_id,
+            name=score_name,
+            value=float(payload.value)
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to record feedback score: {str(e)}")
