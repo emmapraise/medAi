@@ -29,7 +29,6 @@ RUN uv run python -c "from sentence_transformers import SentenceTransformer; fro
 # Copy application source code and built frontend dist
 COPY app/ ./app/
 COPY main.py ./main.py
-COPY dataset/ ./dataset/
 COPY --from=frontend-builder /app/frontend/dist ./frontend/dist
 
 ENV PORT=8000

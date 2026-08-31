@@ -49,11 +49,15 @@ class SearchEngineService:
         # Auto-ingest dataset if collection does not exist
         cols = [c.name for c in self.client.get_collections().collections]
         if settings.COLLECTION_NAME not in cols:
-            print(f"[SearchEngine] Collection '{settings.COLLECTION_NAME}' missing. Auto-ingesting dataset...")
-            try:
-                self.ingest_dataset()
-            except Exception as ie:
-                print(f"[SearchEngine] Auto-ingestion warning: {ie}")
+            print(f"[SearchEngine] Collection '{settings.COLLECTION_NAME}' missing.")
+            if os.path.exists("dataset/medquad.csv"):
+                print("[SearchEngine] Auto-ingesting dataset...")
+                try:
+                    self.ingest_dataset()
+                except Exception as ie:
+                    print(f"[SearchEngine] Auto-ingestion warning: {ie}")
+            else:
+                print("[SearchEngine] 'dataset/medquad.csv' not present in container (using existing remote Qdrant collection).")
 
         print("[SearchEngine] Search Engine Service ready.")
 
