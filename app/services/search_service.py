@@ -1,6 +1,4 @@
 import os
-import torch
-import pandas as pd
 from typing import List, Optional
 from fastapi import HTTPException
 
@@ -19,7 +17,9 @@ class SearchEngineService:
         self.sparse_model: Optional[SparseTextEmbedding] = None
 
     def initialize(self):
-        device = "mps" if torch.backends.mps.is_available() else ("cuda" if torch.cuda.is_available() else "cpu")
+        # On Cloud Run (Linux, no GPU) always use CPU. Avoid loading torch just to detect GPU.
+        is_cloud = not (os.environ.get("DEVELOPMENT_MODE") or os.path.exists("/Users"))
+        device = "cpu"
         print(f"[SearchEngine] Initializing using device: {device}")
 
         # Qdrant client setup
@@ -31,23 +31,35 @@ class SearchEngineService:
             print(f"[SearchEngine] Standalone Qdrant server unreachable ({e}). Falling back to :memory:")
             self.client = QdrantClient(":memory:")
 
-        # PubMedBERT ONNX Dense model setup
+        # PubMedBERT ONNX Dense model — use minimal ONNX session for low memory footprint
         model_target = "models/pubmedbert-onnx" if os.path.isdir("models/pubmedbert-onnx") else settings.DENSE_MODEL_NAME
         print(f"[SearchEngine] Loading ONNX Dense Model from: {model_target}...")
         try:
+            import onnxruntime as ort
+            # Restrict ONNX to 1 inter-op and 2 intra-op threads to save memory & CPU
+            session_opts = ort.SessionOptions()
+            session_opts.intra_op_num_threads = 2
+            session_opts.inter_op_num_threads = 1
+            session_opts.execution_mode = ort.ExecutionMode.ORT_SEQUENTIAL
+            # graph_optimization_level BASIC saves ~100MB vs EXTENDED
+            session_opts.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_BASIC
+
             self.dense_model = SentenceTransformer(
                 model_target,
                 backend="onnx",
-                model_kwargs={"provider": "CPUExecutionProvider"}
+                model_kwargs={
+                    "provider": "CPUExecutionProvider",
+                    "session_options": session_opts,
+                }
             )
         except Exception as onnx_err:
             print(f"[SearchEngine] ONNX loading notice ({onnx_err}), attempting standard loader...")
             self.dense_model = SentenceTransformer(model_target, device=device)
 
-        # FastEmbed BM25 Sparse model setup
+        # FastEmbed BM25 Sparse model — lazy threads to reduce memory spike
         print("[SearchEngine] Loading FastEmbed BM25 Sparse Vectorizer (Qdrant/bm25)...")
-        self.sparse_model = SparseTextEmbedding(model_name=settings.SPARSE_MODEL_NAME)
-        
+        self.sparse_model = SparseTextEmbedding(model_name=settings.SPARSE_MODEL_NAME, threads=1)
+
         # Auto-ingest dataset if collection does not exist
         cols = [c.name for c in self.client.get_collections().collections]
         if settings.COLLECTION_NAME not in cols:
