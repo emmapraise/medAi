@@ -1,5 +1,5 @@
-from app.agent.state import GraphState, NodeName
 from app.agent.service import MedicalAgentService
+from app.agent.state import GraphState, NodeName
 
 agent_service = MedicalAgentService()
 

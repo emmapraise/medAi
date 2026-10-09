@@ -1,7 +1,11 @@
+import logging
 import os
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker, declarative_base
+
 from dotenv import load_dotenv
+from sqlalchemy import create_engine
+from sqlalchemy.orm import declarative_base, sessionmaker
+
+logger = logging.getLogger(__name__)
 
 load_dotenv()
 
@@ -18,7 +22,7 @@ try:
         connect_args={"connect_timeout": 5} if "postgresql" in DATABASE_URL else {}
     )
 except Exception as e:
-    print(f"[DB] Engine creation fallback: {e}")
+    logger.warning(f"[DB] Engine creation fallback: {e}")
     engine = create_engine("sqlite:///:memory:")
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()

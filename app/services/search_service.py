@@ -1,39 +1,40 @@
+import logging
 import os
-from typing import List, Optional
-from fastapi import HTTPException
 
-from sentence_transformers import SentenceTransformer
+import pandas as pd
 from fastembed import SparseTextEmbedding
+from langfuse import observe
 from qdrant_client import QdrantClient, models
+from sentence_transformers import SentenceTransformer
 
 from app.config import settings
 from app.schemas import SearchResultItem
-from langfuse import observe
+
+logger = logging.getLogger(__name__)
 
 class SearchEngineService:
     def __init__(self):
-        self.client: Optional[QdrantClient] = None
-        self.dense_model: Optional[SentenceTransformer] = None
-        self.sparse_model: Optional[SparseTextEmbedding] = None
+        self.client: QdrantClient | None = None
+        self.dense_model: SentenceTransformer | None = None
+        self.sparse_model: SparseTextEmbedding | None = None
 
     def initialize(self):
-        # On Cloud Run (Linux, no GPU) always use CPU. Avoid loading torch just to detect GPU.
-        is_cloud = not (os.environ.get("DEVELOPMENT_MODE") or os.path.exists("/Users"))
+        # CPU only (Cloud Run has no GPU); avoids importing torch just to detect one.
         device = "cpu"
-        print(f"[SearchEngine] Initializing using device: {device}")
+        logger.info(f"[SearchEngine] Initializing using device: {device}")
 
         # Qdrant client setup
         try:
             self.client = QdrantClient(url=settings.QDRANT_URL, api_key=settings.QDRANT_API_KEY, check_compatibility=False, timeout=5)
             self.client.get_collections()
-            print(f"[SearchEngine] Connected to Qdrant Vector Server at {settings.QDRANT_URL}")
+            logger.info(f"[SearchEngine] Connected to Qdrant Vector Server at {settings.QDRANT_URL}")
         except Exception as e:
-            print(f"[SearchEngine] Standalone Qdrant server unreachable ({e}). Falling back to :memory:")
+            logger.warning(f"[SearchEngine] Standalone Qdrant server unreachable ({e}). Falling back to :memory:")
             self.client = QdrantClient(":memory:")
 
         # PubMedBERT ONNX Dense model — use minimal ONNX session for low memory footprint
         model_target = "models/pubmedbert-onnx" if os.path.isdir("models/pubmedbert-onnx") else settings.DENSE_MODEL_NAME
-        print(f"[SearchEngine] Loading ONNX Dense Model from: {model_target}...")
+        logger.info(f"[SearchEngine] Loading ONNX Dense Model from: {model_target}...")
         try:
             import onnxruntime as ort
             # Restrict ONNX to 1 inter-op and 2 intra-op threads to save memory & CPU
@@ -53,27 +54,27 @@ class SearchEngineService:
                 }
             )
         except Exception as onnx_err:
-            print(f"[SearchEngine] ONNX loading notice ({onnx_err}), attempting standard loader...")
+            logger.warning(f"[SearchEngine] ONNX loading notice ({onnx_err}), attempting standard loader...")
             self.dense_model = SentenceTransformer(model_target, device=device)
 
         # FastEmbed BM25 Sparse model — lazy threads to reduce memory spike
-        print("[SearchEngine] Loading FastEmbed BM25 Sparse Vectorizer (Qdrant/bm25)...")
+        logger.info("[SearchEngine] Loading FastEmbed BM25 Sparse Vectorizer (Qdrant/bm25)...")
         self.sparse_model = SparseTextEmbedding(model_name=settings.SPARSE_MODEL_NAME, threads=1)
 
         # Auto-ingest dataset if collection does not exist
         cols = [c.name for c in self.client.get_collections().collections]
         if settings.COLLECTION_NAME not in cols:
-            print(f"[SearchEngine] Collection '{settings.COLLECTION_NAME}' missing.")
+            logger.info(f"[SearchEngine] Collection '{settings.COLLECTION_NAME}' missing.")
             if os.path.exists("dataset/medquad.csv"):
-                print("[SearchEngine] Auto-ingesting dataset...")
+                logger.info("[SearchEngine] Auto-ingesting dataset...")
                 try:
                     self.ingest_dataset()
                 except Exception as ie:
-                    print(f"[SearchEngine] Auto-ingestion warning: {ie}")
+                    logger.warning(f"[SearchEngine] Auto-ingestion warning: {ie}")
             else:
-                print("[SearchEngine] 'dataset/medquad.csv' not present in container (using existing remote Qdrant collection).")
+                logger.info("[SearchEngine] 'dataset/medquad.csv' not present in container (using existing remote Qdrant collection).")
 
-        print("[SearchEngine] Search Engine Service ready.")
+        logger.info("[SearchEngine] Search Engine Service ready.")
 
     def encode_sparse(self, text: str) -> models.SparseVector:
         embed = list(self.sparse_model.embed([str(text)]))[0]
@@ -83,14 +84,14 @@ class SearchEngineService:
         )
 
     @observe(as_type="retriever", name="qdrant-hybrid-search")
-    def hybrid_search(self, query_text: str, top_k: int = 5) -> List[SearchResultItem]:
+    def hybrid_search(self, query_text: str, top_k: int = 5) -> list[SearchResultItem]:
         if not self.client or not self.dense_model or not self.sparse_model:
-            print("[SearchEngine] Client uninitialized. Running initialize()...")
+            logger.info("[SearchEngine] Client uninitialized. Running initialize()...")
             self.initialize()
 
         cols = [c.name for c in self.client.get_collections().collections]
         if settings.COLLECTION_NAME not in cols:
-            print(f"[SearchEngine] Collection missing during search. Auto-ingesting...")
+            logger.info("[SearchEngine] Collection missing during search. Auto-ingesting...")
             self.ingest_dataset()
 
         query_dense = self.dense_model.encode(query_text, normalize_embeddings=True).tolist()
@@ -149,7 +150,7 @@ class SearchEngineService:
         )
 
         texts = df["combined_text"].tolist()
-        print(f"[SearchEngine] Generating dense embeddings for {len(texts)} documents...")
+        logger.info(f"[SearchEngine] Generating dense embeddings for {len(texts)} documents...")
         dense_vectors = self.dense_model.encode(texts, batch_size=256, show_progress_bar=False, normalize_embeddings=True)
 
         points = []
@@ -169,11 +170,11 @@ class SearchEngineService:
             ))
 
         upload_batch = 500
-        print(f"[SearchEngine] Upserting {len(points)} records into Qdrant...")
+        logger.info(f"[SearchEngine] Upserting {len(points)} records into Qdrant...")
         for i in range(0, len(points), upload_batch):
             self.client.upsert(collection_name=settings.COLLECTION_NAME, points=points[i : i + upload_batch])
 
-        print(f"[SearchEngine] Dataset ingestion complete! Total points: {len(points)}")
+        logger.info(f"[SearchEngine] Dataset ingestion complete! Total points: {len(points)}")
         return len(points)
 
 search_engine = SearchEngineService()

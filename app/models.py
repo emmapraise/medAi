@@ -1,7 +1,10 @@
 import datetime
-from sqlalchemy import Column, Integer, String, Text, Float, DateTime, JSON, ForeignKey
+
+from sqlalchemy import JSON, Column, DateTime, Float, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import relationship
+
 from app.db import Base
+
 
 class ConversationSession(Base):
     __tablename__ = "conversation_sessions"

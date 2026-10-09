@@ -1,13 +1,18 @@
 import concurrent.futures
-from typing import Dict, Any
-from app.agent.state import GraphState
-from app.agent.llm_client import llm_client
-from app.services.search_service import search_engine
+import logging
+from typing import Any
+
 from langfuse import observe
+
+from app.agent.llm_client import llm_client
+from app.agent.state import GraphState
+from app.services.search_service import search_engine
+
+logger = logging.getLogger(__name__)
 
 # Node 1: Formulate Search Query with Greeting & Fast-Path Detection
 @observe(as_type="chain", name="crag-formulate-query")
-def generate_query_node(state: GraphState) -> Dict[str, Any]:
+def generate_query_node(state: GraphState) -> dict[str, Any]:
     question = state["question"]
     history = state.get("history", [])
     trace = list(state.get("execution_trace", []))
@@ -24,7 +29,7 @@ def generate_query_node(state: GraphState) -> Dict[str, Any]:
         ans, model, p, c = llm_client.invoke(prompt_conv, temperature=0.5)
         
         log_msg = "[Action: Conversational Greeting] Direct response without RAG search."
-        print(f"[LangGraph Trace] {log_msg}")
+        logger.info(f"[LangGraph Trace] {log_msg}")
         trace.append(log_msg)
         return {
             "generation": ans,
@@ -48,7 +53,7 @@ def generate_query_node(state: GraphState) -> Dict[str, Any]:
             if speculative_docs and len(speculative_docs) > 0 and speculative_docs[0].score >= 0.65:
                 query = question
                 log_msg = f"[Action: Generate Query] Fast-path speculative match found (score={speculative_docs[0].score:.3f}). Skipping LLM query reformulation."
-                print(f"[LangGraph Trace] {log_msg}")
+                logger.info(f"[LangGraph Trace] {log_msg}")
                 trace.append(log_msg)
                 return {
                     "query": query,
@@ -60,7 +65,7 @@ def generate_query_node(state: GraphState) -> Dict[str, Any]:
                     "is_conversational": False
                 }
         except Exception as se:
-            print(f"[MedicalAgent] Speculative search skipped: {se}")
+            logger.warning(f"[MedicalAgent] Speculative search skipped: {se}")
 
     history_str = ""
     if history:
@@ -90,7 +95,7 @@ def generate_query_node(state: GraphState) -> Dict[str, Any]:
         query = question
     
     log_msg = f"[Action: Generate Query] Formulated query: '{query}'"
-    print(f"[LangGraph Trace] {log_msg}")
+    logger.info(f"[LangGraph Trace] {log_msg}")
     trace.append(log_msg)
     
     return {
@@ -105,7 +110,7 @@ def generate_query_node(state: GraphState) -> Dict[str, Any]:
 
 # Node 2: Retrieve Documents (Qdrant Search)
 @observe(as_type="chain", name="crag-retrieve-documents")
-def retrieve_node(state: GraphState) -> Dict[str, Any]:
+def retrieve_node(state: GraphState) -> dict[str, Any]:
     query = state["query"]
     trace = list(state.get("execution_trace", []))
     
@@ -113,18 +118,18 @@ def retrieve_node(state: GraphState) -> Dict[str, Any]:
         results = search_engine.hybrid_search(query_text=query, top_k=5)
         docs = [r.model_dump() for r in results]
     except Exception as se:
-        print(f"[MedicalAgent] Search engine error: {se}")
+        logger.warning(f"[MedicalAgent] Search engine error: {se}")
         docs = []
     
     log_msg = f"[Action: Retrieve] Retrieved {len(docs)} passages from Qdrant for query: '{query}'"
-    print(f"[LangGraph Trace] {log_msg}")
+    logger.info(f"[LangGraph Trace] {log_msg}")
     trace.append(log_msg)
     
     return {"documents": docs, "execution_trace": trace}
 
 # Node 3: Grade Documents Relevance
 @observe(as_type="chain", name="crag-grade-documents")
-def grade_documents_node(state: GraphState) -> Dict[str, Any]:
+def grade_documents_node(state: GraphState) -> dict[str, Any]:
     question = state["question"]
     docs = state["documents"]
     trace = list(state.get("execution_trace", []))
@@ -133,7 +138,7 @@ def grade_documents_node(state: GraphState) -> Dict[str, Any]:
     
     if not docs:
         log_msg = "[Action: Grade Documents] No passages found -> Relevance: NO"
-        print(f"[LangGraph Trace] {log_msg}")
+        logger.info(f"[LangGraph Trace] {log_msg}")
         trace.append(log_msg)
         return {"is_relevant": "no", "execution_trace": trace}
         
@@ -144,7 +149,7 @@ def grade_documents_node(state: GraphState) -> Dict[str, Any]:
     is_rel = "yes" if "YES" in raw_res.upper() or "RELEVANT" in raw_res.upper() else "no"
     
     log_msg = f"[Action: Grade Documents] Relevance Grade: {is_rel.upper()}"
-    print(f"[LangGraph Trace] {log_msg}")
+    logger.info(f"[LangGraph Trace] {log_msg}")
     trace.append(log_msg)
     
     return {
@@ -156,7 +161,7 @@ def grade_documents_node(state: GraphState) -> Dict[str, Any]:
 
 # Node 4: Rewrite Query
 @observe(as_type="chain", name="crag-rewrite-query")
-def rewrite_query_node(state: GraphState) -> Dict[str, Any]:
+def rewrite_query_node(state: GraphState) -> dict[str, Any]:
     question = state["question"]
     current_retry = state.get("retry_count", 0) + 1
     trace = list(state.get("execution_trace", []))
@@ -168,7 +173,7 @@ def rewrite_query_node(state: GraphState) -> Dict[str, Any]:
     query = raw_res.strip().strip('"').split("\n")[0]
     
     log_msg = f"[Action: Rewrite Query #{current_retry}] Alternative query: '{query}'"
-    print(f"[LangGraph Trace] {log_msg}")
+    logger.info(f"[LangGraph Trace] {log_msg}")
     trace.append(log_msg)
     
     return {
@@ -181,7 +186,7 @@ def rewrite_query_node(state: GraphState) -> Dict[str, Any]:
 
 # Node 5: Generate Answer
 @observe(as_type="chain", name="crag-generate-answer")
-def generate_answer_node(state: GraphState) -> Dict[str, Any]:
+def generate_answer_node(state: GraphState) -> dict[str, Any]:
     question = state["question"]
     docs = state["documents"]
     history = state.get("history", [])
@@ -214,7 +219,7 @@ def generate_answer_node(state: GraphState) -> Dict[str, Any]:
         res = res.replace(label, "").strip()
     
     log_msg = f"[Action: Generate Answer] Synthesized candidate answer ({len(res)} chars)"
-    print(f"[LangGraph Trace] {log_msg}")
+    logger.info(f"[LangGraph Trace] {log_msg}")
     trace.append(log_msg)
     
     return {
@@ -226,7 +231,7 @@ def generate_answer_node(state: GraphState) -> Dict[str, Any]:
 
 # Node 6: Grade Generation (Parallel Verification)
 @observe(as_type="chain", name="crag-grade-generation")
-def grade_generation_node(state: GraphState) -> Dict[str, Any]:
+def grade_generation_node(state: GraphState) -> dict[str, Any]:
     question = state["question"]
     generation = state["generation"]
     docs = state["documents"]
@@ -250,7 +255,7 @@ def grade_generation_node(state: GraphState) -> Dict[str, Any]:
     is_useful = "yes" if "YES" in res_useful.upper() or "ADDRESSES" in res_useful.upper() else "no"
     
     log_msg = f"[Action: Grade Generation] Parallel Verification -> Grounded={is_grounded.upper()}, Useful={is_useful.upper()}"
-    print(f"[LangGraph Trace] {log_msg}")
+    logger.info(f"[LangGraph Trace] {log_msg}")
     trace.append(log_msg)
     
     return {

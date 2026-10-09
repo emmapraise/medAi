@@ -2,14 +2,14 @@
 FROM node:20-alpine AS frontend-builder
 WORKDIR /app/frontend
 COPY frontend/package*.json ./
-RUN npm install
+RUN npm ci
 COPY frontend/ ./
 RUN npm run build
 
 FROM python:3.11-slim
 
 # Copy official uv binary from Astral
-COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
+COPY --from=ghcr.io/astral-sh/uv:0.11  /uv /uvx /bin/
 
 WORKDIR /app
 
@@ -20,8 +20,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy lockfiles and install dependencies via uv
-COPY pyproject.toml ./
-RUN uv sync --no-dev --no-cache
+COPY pyproject.toml uv.lock ./
+RUN uv sync --frozen --no-dev --no-cache
 
 # Pre-download & save model weights during Docker BUILD time into /app/models/pubmedbert-onnx
 # This runs during Cloud Build (which has 8-16GB RAM), baking the ONNX files into the image.
@@ -40,5 +40,12 @@ COPY app/ ./app/
 COPY main.py ./main.py
 COPY --from=frontend-builder /app/frontend/dist ./frontend/dist
 
-EXPOSE 8080 8000
-CMD ["sh", "-c", "uv run uvicorn main:app --host 0.0.0.0 --port ${PORT:-8080} --workers 1 --timeout-keep-alive 120"]
+# Run as an unprivileged user
+RUN useradd --create-home --uid 10001 appuser && chown -R appuser /app
+USER appuser
+
+EXPOSE 8080
+HEALTHCHECK --interval=30s --timeout=5s --start-period=120s --retries=3 \
+    CMD curl -fsS "http://localhost:${PORT:-8080}/healthz" || exit 1
+
+CMD ["sh", "-c", "uv run --frozen --no-dev uvicorn main:app --host 0.0.0.0 --port ${PORT:-8080} --workers 1 --timeout-keep-alive 120"]

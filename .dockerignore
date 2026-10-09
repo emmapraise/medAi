@@ -1,0 +1,15 @@
+.git
+.venv
+.env
+.env.*
+!.env.example
+**/__pycache__
+**/node_modules
+frontend/dist
+dataset
+qdrant_storage
+models
+tests
+*.ipynb
+.pytest_cache
+.ruff_cache

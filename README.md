@@ -73,7 +73,7 @@ The medical knowledge base backing MediQA Bot is built from the **MedQuAD** (Med
 2. **Hallucination & Groundedness Verification**: Evaluates generated answers in parallel to verify they are strictly supported by retrieved clinical literature.
 3. **Interactive Yes/No Conversation Flow**: Prompts user with natural follow-up offers (e.g. *"Would you like to know more about treatments for HIV?"*). When the user answers with *"Yes"*, *"Sure"*, or *"Tell me more"*, the system automatically resolves the offer topic from conversation history and retrieves relevant documents.
 4. **PostgreSQL Analytics, Feedback & Cost Engine**: Logs every query execution trace, token consumption, latency (ms), document relevance scores, user feedback ratings (👍 / 👎), and estimated USD cost ($).
-5. **Comprehensive 5-Chart Real-Time Analytics Dashboard**: Real-time visualization of (1) Response Speed per Query, (2) Quality & Verification Breakdown, (3) Estimated Cost Trend, (4) Token Consumption Distribution, and (5) User Satisfaction Breakdown.
+5. **Visible verification**: every answer shows whether its sources were relevant, whether it matches them, and whether it addresses the question, plus the steps the agent took. Aggregate metrics are available from `GET /api/v1/analytics/summary`.
 6. **Mobile-Responsive React PWA with Interactive Feedback**: Features an offline-ready PWA with Service Worker (`sw.js`), web manifest, mobile slide-out drawer, past session drawer, copy answer button, question editing capabilities, and one-click user feedback.
 
 ---
@@ -101,7 +101,7 @@ MediQA Bot/
 │   └── search_service.py    # Qdrant client, PubMedBERT & BM25 hybrid search engine
 ├── dataset/                 # Medical QA dataset files (medquad.csv)
 ├── frontend/                # React Vite PWA Frontend
-│   ├── src/                 # React components (DoctorChat, HybridSearch, AnalyticsDashboard, App.jsx)
+│   ├── src/                 # React app (App, Sidebar, Conversation, Entry) and lib/ helpers
 │   ├── public/              # Service worker (sw.js), manifest.json, PWA icons
 │   └── index.html           # Edge-to-edge mobile PWA index
 ├── Dockerfile               # Multi-stage Dockerfile with pre-cached PubMedBERT weights
@@ -218,7 +218,7 @@ The application will start at **`http://localhost:8000`**:
 To trigger Qdrant vector indexing for `dataset/medquad.csv`:
 
 ```bash
-curl -X POST "http://localhost:8000/api/v1/ingest"
+curl -X POST "http://localhost:8000/api/v1/ingest" -H "X-API-Key: $ADMIN_API_KEY"
 ```
 Or execute vector ingestion in Python:
 ```bash
@@ -226,6 +226,24 @@ python -c "from app.services.search_service import search_engine; search_engine.
 ```
 
 ---
+
+## 🔐 Security & Operations
+
+* **Admin endpoints** (`/ingest`, `/analytics/logs`, `/analytics/cache/*`) require an `X-API-Key` header matching `ADMIN_API_KEY`. With no key set they are open in development and return `503` in production.
+* **Conversation privacy**: session IDs are random UUIDs kept in the browser. `GET /analytics/sessions` only returns IDs the client passes in `?ids=`.
+* **CORS** is same-origin by default; set `CORS_ORIGINS` for a separate frontend host.
+* **Rate limits** key on the client IP from `X-Forwarded-For`, counted from the right using `TRUSTED_PROXY_COUNT` (1 on Cloud Run).
+* **Ingestion** only reads files inside `DATASET_DIR`.
+* Liveness probe: `GET /healthz`.
+
+## 🧰 Development
+
+```bash
+make test   # pytest (no models or network needed)
+make lint   # ruff + oxlint
+```
+
+CI (`.github/workflows/ci.yml`) runs lint, tests and the frontend build on every push and PR.
 
 ## 🧪 Scoring & Evaluation Guide
 
@@ -237,8 +255,8 @@ Evaluators can verify every feature of the project using the following checks:
 | **2. Multi-Turn "Yes" Offer** | Send `POST /api/v1/ask`<br>`{"question": "Yes, tell me more", "session_id": "same_session"}` | Formulates query from previous history topic (e.g. `Glaucoma detection methods`) and answers seamlessly. |
 | **3. Hybrid Search** | `POST /api/v1/search`<br>`{"query": "Infant hepatoblastoma"}` | Returns top 5 RRF-ranked medical passages combining PubMedBERT + BM25 score. |
 | **4. PostgreSQL Logging & Feedback** | `GET /api/v1/analytics/summary`<br>`POST /api/v1/analytics/feedback` | Returns total queries count, groundedness %, relevance %, user satisfaction %, and total cost ($ USD). |
-| **5. 5-Chart Monitoring Dashboard** | Navigate to Analytics tab in UI | Renders 5 distinct charts (Speed, Quality, Cost Trend, Token Usage, User Feedback) and live audit log table. |
-| **6. Mobile PWA Responsiveness** | Open `http://localhost:8000` in mobile viewport (< 768px) | Slide-out mobile navigation drawer opens cleanly with dark backdrop blur. |
+| **5. Verification ledger** | Ask any question in the UI | Each answer shows three source checks and an expandable list of steps taken. |
+| **6. Mobile PWA Responsiveness** | Open `http://localhost:8000` in mobile viewport (< 768px) | Conversation list opens as a slide-out drawer; the verification ledger moves below the answer. |
 
 ---
 
@@ -260,7 +278,7 @@ The application will be accessible immediately at `http://localhost:8000`, with 
 docker build -t mediqa-bot:latest .
 
 # Run container locally
-docker run -p 8000:8000 \
+docker run -p 8000:8080 \
   -e GEMINI_API_KEY="your_key" \
   -e QDRANT_URL="your_qdrant_url" \
   -e QDRANT_API_KEY="your_qdrant_key" \

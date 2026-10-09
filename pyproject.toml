@@ -1,13 +1,12 @@
 [project]
 name = "mediqa-bot"
 version = "0.1.0"
-description = "Medical QA Bot powered by Qdrant Hybrid Search & Groq LLMs"
+description = "Medical QA Bot powered by Qdrant hybrid search and a LangGraph corrective-RAG agent"
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
     "fastapi>=0.141.1",
     "fastembed>=0.8.0",
-    "jupyter>=1.1.1",
     "langchain>=1.3.14",
     "langchain-core>=1.5.3",
     "langchain-google-genai>=4.3.2",
@@ -31,3 +30,25 @@ dependencies = [
     "tqdm>=4.70.0",
     "uvicorn>=0.52.1",
 ]
+
+[dependency-groups]
+dev = [
+    "httpx>=0.28.0",
+    "jupyter>=1.1.1",
+    "pytest>=8.3.0",
+    "ruff>=0.8.0",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+addopts = "-q"
+
+[tool.ruff]
+line-length = 120
+target-version = "py311"
+extend-exclude = ["*.ipynb"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "S", "C4"]
+ignore = ["E501", "S101", "B008", "UP042"]

@@ -1,13 +1,17 @@
+import logging
 import time
-from typing import Dict, Any, Optional
+from typing import Any
+
+from langfuse import get_client, observe, propagate_attributes
+from langfuse.langchain import CallbackHandler
 from langgraph.checkpoint.memory import MemorySaver
 
-from app.config import settings
 from app.agent.llm_client import llm_client
 from app.agent.workflow import build_crag_workflow
+from app.config import settings
 from app.services.analytics_service import analytics_service
-from langfuse import observe, get_client, propagate_attributes
-from langfuse.langchain import CallbackHandler
+
+logger = logging.getLogger(__name__)
 
 class MedicalAgentService:
     def __init__(self):
@@ -18,12 +22,12 @@ class MedicalAgentService:
         llm_client.initialize()
         analytics_service.initialize_db()
         self.graph = build_crag_workflow(self.memory)
-        print("[MedicalAgent] Modular LangGraph CRAG Workflow compiled successfully.")
+        logger.info("[MedicalAgent] Modular LangGraph CRAG Workflow compiled successfully.")
 
     @observe(as_type="agent", name="medical-qa-crag-agent")
-    def run_qa(self, question: str, session_id: str = "default_session", model: Optional[str] = None, max_turns: int = 5) -> Dict[str, Any]:
+    def run_qa(self, question: str, session_id: str = "default_session", model: str | None = None, max_turns: int = 5) -> dict[str, Any]:
         if self.graph is None:
-            print("[MedicalAgent] Graph uninitialized. Running initialize()...")
+            logger.info("[MedicalAgent] Graph uninitialized. Running initialize()...")
             self.initialize()
 
         start_time = time.perf_counter()
@@ -37,7 +41,7 @@ class MedicalAgentService:
                 metadata={"env": settings.APP_ENV}
             )
         except Exception:
-            pass
+            logger.debug("Langfuse tracing setup skipped", exc_info=True)
 
         # Prepare Langfuse callbacks & metadata for LangGraph
         callbacks = []
@@ -45,7 +49,7 @@ class MedicalAgentService:
             langfuse_handler = CallbackHandler()
             callbacks.append(langfuse_handler)
         except Exception:
-            pass
+            logger.debug("Langfuse tracing setup skipped", exc_info=True)
 
         config = {
             "configurable": {"thread_id": session_id},
@@ -84,7 +88,7 @@ class MedicalAgentService:
                 finally:
                     db.close()
             except Exception as e:
-                print(f"[MedicalAgent] DB history restoration notice: {e}")
+                logger.warning(f"[MedicalAgent] DB history restoration notice: {e}")
 
         initial_state = {
             "question": question,
@@ -183,7 +187,7 @@ class MedicalAgentService:
                         comment=f"CRAG Answer Usefulness & Alignment: {is_use.upper()}"
                     )
         except Exception as se:
-            print(f"[MedicalAgent] Langfuse scoring notice: {se}")
+            logger.warning(f"[MedicalAgent] Langfuse scoring notice: {se}")
 
         return {
             "id": db_log.id,

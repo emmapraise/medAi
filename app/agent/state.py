@@ -1,5 +1,6 @@
 from enum import Enum
-from typing import List, Dict, Any, TypedDict
+from typing import Any, TypedDict
+
 
 class NodeName(str, Enum):
     GENERATE_QUERY = "generate_query"
@@ -12,14 +13,14 @@ class NodeName(str, Enum):
 class GraphState(TypedDict):
     question: str
     query: str
-    documents: List[Dict[str, Any]]
+    documents: list[dict[str, Any]]
     generation: str
     retry_count: int
     is_relevant: str
     is_grounded: str
     is_useful: str
-    execution_trace: List[str]
-    history: List[Dict[str, str]]
+    execution_trace: list[str]
+    history: list[dict[str, str]]
     prompt_tokens: int
     completion_tokens: int
     fast_path: bool

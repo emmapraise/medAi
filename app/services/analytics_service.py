@@ -1,9 +1,14 @@
-from typing import Dict, Any, List, Optional
 import datetime
+import logging
+from typing import Any
+
+from sqlalchemy import func, inspect, text
 from sqlalchemy.orm import Session
-from sqlalchemy import func, text, inspect
-from app.db import Base, engine, SessionLocal
+
+from app.db import SessionLocal, engine
 from app.models import ConversationSession, RAGQueryLog
+
+logger = logging.getLogger(__name__)
 
 class AnalyticsService:
     def initialize_db(self):
@@ -22,9 +27,9 @@ class AnalyticsService:
                     if "feedback_comment" not in existing_cols:
                         conn.execute(text("ALTER TABLE rag_query_logs ADD COLUMN feedback_comment TEXT;"))
                     conn.commit()
-            print("[AnalyticsService] Database tables verified & initialized.")
+            logger.info("[AnalyticsService] Database tables verified & initialized.")
         except Exception as e:
-            print(f"[AnalyticsService] DB initialization notice ({e}). Continuing with in-memory fallback if needed.")
+            logger.warning(f"[AnalyticsService] DB initialization notice ({e}). Continuing with in-memory fallback if needed.")
 
     def calculate_cost(self, model_name: str, prompt_tokens: int, completion_tokens: int) -> float:
         model = model_name.lower()
@@ -48,7 +53,7 @@ class AnalyticsService:
         is_grounded: str,
         is_useful: str,
         turns_executed: int,
-        execution_trace: List[str],
+        execution_trace: list[str],
         answer: str,
         model_used: str,
         latency_seconds: float,
@@ -93,11 +98,11 @@ class AnalyticsService:
             db.add(log_entry)
             db.commit()
             db.refresh(log_entry)
-            print(f"[AnalyticsService] Query logged to PostgreSQL (id={log_entry.id}, latency={latency_seconds:.2f}s, cost=${cost:.6f}).")
+            logger.info(f"[AnalyticsService] Query logged to PostgreSQL (id={log_entry.id}, latency={latency_seconds:.2f}s, cost=${cost:.6f}).")
             return log_entry
         except Exception as e:
             db.rollback()
-            print(f"[AnalyticsService Error] Failed to log to PostgreSQL: {e}")
+            logger.warning(f"[AnalyticsService Error] Failed to log to PostgreSQL: {e}")
             cost = self.calculate_cost(model_used, prompt_tokens, completion_tokens)
             return RAGQueryLog(
                 session_id=session_id,
@@ -120,7 +125,7 @@ class AnalyticsService:
         finally:
             db.close()
 
-    def record_feedback(self, log_id: int, feedback: str, comment: Optional[str] = None) -> bool:
+    def record_feedback(self, log_id: int, feedback: str, comment: str | None = None) -> bool:
         db: Session = SessionLocal()
         try:
             log_entry = db.query(RAGQueryLog).filter(RAGQueryLog.id == log_id).first()
@@ -130,16 +135,16 @@ class AnalyticsService:
             if comment:
                 log_entry.feedback_comment = comment
             db.commit()
-            print(f"[AnalyticsService] User feedback '{feedback}' recorded for log_id={log_id}.")
+            logger.info(f"[AnalyticsService] User feedback '{feedback}' recorded for log_id={log_id}.")
             return True
         except Exception as e:
             db.rollback()
-            print(f"[AnalyticsService Error] Failed to record feedback: {e}")
+            logger.warning(f"[AnalyticsService Error] Failed to record feedback: {e}")
             raise e
         finally:
             db.close()
 
-    def get_summary(self) -> Dict[str, Any]:
+    def get_summary(self) -> dict[str, Any]:
         db: Session = SessionLocal()
         try:
             total_queries = db.query(func.count(RAGQueryLog.id)).scalar() or 0
