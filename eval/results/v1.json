@@ -1,0 +1,127 @@
+{
+  "retriever": "v1",
+  "cases": 105,
+  "metrics": {
+    "paraphrase": {
+      "hit@1": 0.537,
+      "hit@5": 0.9,
+      "mrr@10": 0.671,
+      "n": 80
+    },
+    "ALL": {
+      "hit@1": 0.581,
+      "hit@5": 0.914,
+      "mrr@10": 0.711,
+      "n": 105
+    },
+    "typo": {
+      "hit@1": 0.667,
+      "hit@5": 0.933,
+      "mrr@10": 0.798,
+      "n": 15
+    },
+    "keyword": {
+      "hit@1": 0.8,
+      "hit@5": 1.0,
+      "mrr@10": 0.9,
+      "n": 10
+    }
+  },
+  "latency_ms": {
+    "p50": 30.1,
+    "p95": 65.8
+  },
+  "peak_rss_mb": 1103.0,
+  "misses": [
+    {
+      "id": "paraphrase-004",
+      "query": "how do I know if I have ehlers-danlos syndrome, vascular type",
+      "gold": "What are the symptoms of Ehlers-Danlos syndrome, vascular type ?",
+      "top3": [
+        "how to diagnose ehlers-danlos syndrome, vascular type ?",
+        "what is (are) ehlers-danlos syndrome ?",
+        "what are the treatments for ehlers-danlos syndrome ?"
+      ]
+    },
+    {
+      "id": "paraphrase-008",
+      "query": "what does achondroplasia feel like",
+      "gold": "What are the symptoms of Achondroplasia ?",
+      "top3": [
+        "how many people are affected by achondroplasia ?",
+        "what are the symptoms of depression ?",
+        "do you have information about postpartum care"
+      ]
+    },
+    {
+      "id": "paraphrase-022",
+      "query": "why do people get hanhart syndrome",
+      "gold": "What causes Hanhart syndrome ?",
+      "top3": [
+        "what is (are) hanhart syndrome ?",
+        "how many people are affected by hennekam syndrome ?",
+        "how many people are affected by pallister-hall syndrome ?"
+      ]
+    },
+    {
+      "id": "paraphrase-026",
+      "query": "why do people get chandler's syndrome",
+      "gold": "What causes Chandler's syndrome ?",
+      "top3": [
+        "is chandler's syndrome inherited ?",
+        "what is (are) usher syndrome ?",
+        "how many people are affected by down syndrome ?"
+      ]
+    },
+    {
+      "id": "paraphrase-032",
+      "query": "how is urinary tract infection in adults diagnosed",
+      "gold": "How to diagnose Urinary Tract Infection In Adults ?",
+      "top3": [
+        "what is (are) urinary tract infections ?",
+        "what to do for urinary tract infection in adults ?",
+        "what is (are) urinary tract infection in adults ?"
+      ]
+    },
+    {
+      "id": "paraphrase-044",
+      "query": "does ornithine transcarbamylase deficiency run in families",
+      "gold": "Is ornithine transcarbamylase deficiency inherited ?",
+      "top3": [
+        "what is (are) ornithine transcarbamylase deficiency ?",
+        "is ornithine translocase deficiency inherited ?",
+        "what are the genetic changes related to ornithine transcarbamylase deficiency ?"
+      ]
+    },
+    {
+      "id": "paraphrase-045",
+      "query": "can I pass granulomatosis with polyangiitis to my children",
+      "gold": "Is granulomatosis with polyangiitis inherited ?",
+      "top3": [
+        "what causes fanconi anemia ?",
+        "how to prevent kawasaki disease ?",
+        "what is (are) granulomatosis with polyangiitis ?"
+      ]
+    },
+    {
+      "id": "paraphrase-073",
+      "query": "how to avoid parasites - leishmaniasis",
+      "gold": "How to prevent Parasites - Leishmaniasis ?",
+      "top3": [
+        "how to diagnose parasites - leishmaniasis ?",
+        "what is (are) leishmaniasis ?",
+        "what is (are) parasites - leishmaniasis ?"
+      ]
+    },
+    {
+      "id": "typo-090",
+      "query": "lissencephlay",
+      "gold": "What is (are) Lissencephaly ?",
+      "top3": [
+        "what is the outlook for lissencephaly ?",
+        "what are the treatments for lissencephaly ?",
+        "what is (are) cataract ?"
+      ]
+    }
+  ]
+}

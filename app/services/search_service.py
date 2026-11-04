@@ -6,6 +6,7 @@ from fastembed import SparseTextEmbedding
 from langfuse import observe
 from qdrant_client import QdrantClient, models
 from sentence_transformers import SentenceTransformer
+from tqdm import tqdm
 
 from app.config import settings
 from app.schemas import SearchResultItem
@@ -39,7 +40,7 @@ class SearchEngineService:
             import onnxruntime as ort
             # Restrict ONNX to 1 inter-op and 2 intra-op threads to save memory & CPU
             session_opts = ort.SessionOptions()
-            session_opts.intra_op_num_threads = 2
+            session_opts.intra_op_num_threads = int(os.getenv("ONNX_THREADS", "2"))
             session_opts.inter_op_num_threads = 1
             session_opts.execution_mode = ort.ExecutionMode.ORT_SEQUENTIAL
             # graph_optimization_level BASIC saves ~100MB vs EXTENDED
@@ -149,32 +150,22 @@ class SearchEngineService:
             }
         )
 
-        texts = df["combined_text"].tolist()
-        logger.info(f"[SearchEngine] Generating dense embeddings for {len(texts)} documents...")
-        dense_vectors = self.dense_model.encode(texts, batch_size=256, show_progress_bar=False, normalize_embeddings=True)
+        # Embed + upsert one batch at a time: bounded memory, visible progress, partial data survives a crash.
+        batch = 250
+        for start in tqdm(range(0, len(df), batch), desc="ingest", unit="batch", mininterval=5):
+            chunk = df.iloc[start : start + batch]
+            dense = self.dense_model.encode(chunk["combined_text"].tolist(), batch_size=32, show_progress_bar=False, normalize_embeddings=True)
+            points = [
+                models.PointStruct(
+                    id=int(idx),
+                    vector={"text-dense": dense[i].tolist(), "text-sparse": self.encode_sparse(row["combined_text"])},
+                    payload={"question": row["question"], "answer": row["answer"], "source": row["source"], "focus_area": row["focus_area"]},
+                )
+                for i, (idx, row) in enumerate(chunk.iterrows())
+            ]
+            self.client.upsert(collection_name=settings.COLLECTION_NAME, points=points)
 
-        points = []
-        for idx, row in df.iterrows():
-            points.append(models.PointStruct(
-                id=idx,
-                vector={
-                    "text-dense": dense_vectors[idx].tolist(),
-                    "text-sparse": self.encode_sparse(row["combined_text"])
-                },
-                payload={
-                    "question": row["question"],
-                    "answer": row["answer"],
-                    "source": row["source"],
-                    "focus_area": row["focus_area"]
-                }
-            ))
-
-        upload_batch = 500
-        logger.info(f"[SearchEngine] Upserting {len(points)} records into Qdrant...")
-        for i in range(0, len(points), upload_batch):
-            self.client.upsert(collection_name=settings.COLLECTION_NAME, points=points[i : i + upload_batch])
-
-        logger.info(f"[SearchEngine] Dataset ingestion complete! Total points: {len(points)}")
-        return len(points)
+        logger.info(f"[SearchEngine] Dataset ingestion complete! Total points: {len(df)}")
+        return len(df)
 
 search_engine = SearchEngineService()
