@@ -20,6 +20,8 @@ class AnalyticsService:
                     conn.execute(text("ALTER TABLE rag_query_logs ADD COLUMN IF NOT EXISTS user_feedback VARCHAR;"))
                     conn.execute(text("ALTER TABLE rag_query_logs ADD COLUMN IF NOT EXISTS feedback_comment TEXT;"))
                     conn.execute(text("ALTER TABLE rag_query_logs ADD COLUMN IF NOT EXISTS extra JSON;"))
+                    conn.execute(text("ALTER TABLE conversation_sessions ADD COLUMN IF NOT EXISTS share_id VARCHAR;"))
+                    conn.execute(text("CREATE UNIQUE INDEX IF NOT EXISTS ix_conversation_sessions_share_id ON conversation_sessions (share_id);"))
                     conn.commit()
                 else:
                     inspector = inspect(engine)
@@ -30,6 +32,9 @@ class AnalyticsService:
                         conn.execute(text("ALTER TABLE rag_query_logs ADD COLUMN feedback_comment TEXT;"))
                     if "extra" not in existing_cols:
                         conn.execute(text("ALTER TABLE rag_query_logs ADD COLUMN extra JSON;"))
+                    if "share_id" not in [c["name"] for c in inspector.get_columns("conversation_sessions")]:
+                        conn.execute(text("ALTER TABLE conversation_sessions ADD COLUMN share_id VARCHAR;"))
+                    conn.execute(text("CREATE UNIQUE INDEX IF NOT EXISTS ix_conversation_sessions_share_id ON conversation_sessions (share_id);"))
                     conn.commit()
             logger.info("[AnalyticsService] Database tables verified & initialized.")
         except Exception as e:

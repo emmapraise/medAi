@@ -15,6 +15,7 @@ class ConversationSession(Base):
     total_queries = Column(Integer, default=0)
     total_tokens = Column(Integer, default=0)
     total_cost_usd = Column(Float, default=0.0)
+    share_id = Column(String, unique=True, nullable=True, index=True)  # token for a read-only share link; NULL = not shared
 
     logs = relationship("RAGQueryLog", back_populates="session", cascade="all, delete-orphan")
 

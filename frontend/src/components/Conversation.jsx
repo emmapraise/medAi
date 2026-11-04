@@ -1,21 +1,13 @@
 import { useEffect, useRef, useState } from "react";
-import { ArrowUp, Mic, Printer, Square } from "lucide-react";
+import { ArrowUp, Mic, Share2, Square } from "lucide-react";
 import Answer from "./Answer";
+import ShareSheet from "./ShareSheet";
 import SourceSheet from "./SourceSheet";
 import { askStream, getSession, sendFeedback } from "../lib/api";
+import { fromHistory } from "../lib/entries";
 import { dictationSupported, startDictation } from "../lib/speech";
 
 const NOTICE = "AI-written from NIH sources. It can make mistakes and isn't medical advice. In an emergency, call your local emergency number.";
-
-const PLAIN_KEY = "mediqa.plain";
-
-function readPlain() {
-  try {
-    return localStorage.getItem(PLAIN_KEY) === "1";
-  } catch {
-    return false; // storage can be unavailable (private mode); the switch just will not be remembered
-  }
-}
 
 const STARTERS = [
   "What are the symptoms of glaucoma?",
@@ -23,29 +15,13 @@ const STARTERS = [
   "What causes iron deficiency anemia?",
 ];
 
-function fromHistory(m) {
-  const extra = m.extra || {};
-  return {
-    id: `log-${m.id}`,
-    logId: m.id,
-    question: m.question,
-    answer: m.answer,
-    citations: extra.citations || [],
-    followups: extra.followups || [],
-    safety: extra.safety || null,
-    abstained: !!extra.abstained,
-    feedback: m.user_feedback,
-    state: "done",
-  };
-}
-
 export default function Conversation({ sessionId, queued, onQueuedHandled, onAsked, onBrowseTopics }) {
   const [entries, setEntries] = useState([]);
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
   const [loadingHistory, setLoadingHistory] = useState(true);
   const [sheet, setSheet] = useState(null); // { entryId, n }
-  const [plain, setPlain] = useState(readPlain);
+  const [sharing, setSharing] = useState(false);
   const [listening, setListening] = useState(false);
   const [voiceNote, setVoiceNote] = useState("");
   const stopDictation = useRef(null);
@@ -94,7 +70,7 @@ export default function Conversation({ sessionId, queued, onQueuedHandled, onAsk
 
     let finished = false;
     try {
-      for await (const ev of askStream(question, sessionId, ctl.signal, plain)) {
+      for await (const ev of askStream(question, sessionId, ctl.signal)) {
         if (ev.type === "status") update(id, { status: ev.text });
         else if (ev.type === "token") update(id, (e) => ({ answer: e.answer + ev.text }));
         else if (ev.type === "citations") update(id, { citations: ev.items });
@@ -140,15 +116,6 @@ export default function Conversation({ sessionId, queued, onQueuedHandled, onAsk
     field.current.focus();
   };
 
-  const togglePlain = (on) => {
-    setPlain(on);
-    try {
-      localStorage.setItem(PLAIN_KEY, on ? "1" : "0");
-    } catch {
-      /* not remembered; fine */
-    }
-  };
-
   const toggleVoice = () => {
     if (listening) return stopDictation.current?.();
     const base = input.trim();
@@ -175,23 +142,15 @@ export default function Conversation({ sessionId, queued, onQueuedHandled, onAsk
 
   return (
     <div className="conversation">
-      <div className="convo-bar">
-        <label className="switch">
-          <input type="checkbox" role="switch" checked={plain} onChange={(e) => togglePlain(e.target.checked)} />
-          Plain language
-        </label>
-        {entries.some((e) => e.state === "done" && e.answer) && (
-          <button type="button" className="tool" onClick={() => window.print()}>
-            <Printer size={18} aria-hidden="true" /> Save as PDF
+      {entries.some((e) => e.state === "done" && e.answer) && (
+        <div className="convo-bar">
+          <button type="button" className="tool" onClick={() => setSharing(true)}>
+            <Share2 size={18} aria-hidden="true" /> Share
           </button>
-        )}
-      </div>
+        </div>
+      )}
       <div className="feed" ref={feed} onScroll={(e) => { const el = e.currentTarget; stick.current = el.scrollHeight - el.scrollTop - el.clientHeight < 120; }}>
         <div className="column">
-          <header className="print-only print-head">
-            <h1>MediQA conversation</h1>
-            <p>{new Date().toLocaleDateString(undefined, { dateStyle: "long" })}. {NOTICE}</p>
-          </header>
           {!loadingHistory && entries.length === 0 && (
             <section className="welcome">
               <h1>Ask about a health topic</h1>
@@ -260,6 +219,7 @@ export default function Conversation({ sessionId, queued, onQueuedHandled, onAsk
         <p className="fine composer-fine">{NOTICE}</p>
       </div>
 
+      {sharing && <ShareSheet sessionId={sessionId} onClose={() => setSharing(false)} />}
       {sheetEntry && <SourceSheet cites={sheetEntry.citations} active={sheet.n} onClose={() => setSheet(null)} />}
     </div>
   );
