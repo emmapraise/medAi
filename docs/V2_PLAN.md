@@ -147,3 +147,19 @@ Regenerate the vocab with `python -c "from app.services.search_v2 import write_v
 Tried first mixing question points into the single dense list: hit@5 1.0 but hit@1 fell to 0.543 (same-disease questions crowd the list). Giving them their own prefetch list fixed that.
 Caveat: eval gold is the exact MedQuAD question text, which is also what these vectors embed, so this eval favours them. Real-user gain is probably smaller. Re-check once we have real queries/feedback.
 Cost: +80s to build, +16k points, +3ms per search. Zero misses left in the retrieval eval.
+
+## Phase 2 status — agent v2 (`app/agent/v2.py`)
+
+Built: retrieve -> abstain or ONE streamed Gemini call (google-genai direct, no LangGraph/LangChain). Greetings are canned (0 calls). Follow-ups add one small query-resolve call (2 total). Answers cite `[n]`; only cited sources are returned; 3 follow-up questions come from the same call (split off the stream by a marker). 503 "high demand" is retried (3 tries, before any text is sent).
+Abstain: best raw dense cosine < 0.65 (`V2_MIN_DENSE`). Eval separation: in-corpus queries >= 0.80 (one typo case 0.658), off-topic <= 0.646. Margin is thin; recalibrate when real queries exist.
+Live check (2 questions that got through): 1 LLM call each, first token 0.6-1.1s, total 1.1-2.4s, ~700 prompt + 110-230 completion tokens. v1: up to 6 calls.
+Tests: 5 new (stream splitter, abstain without LLM, one-call answer + cited sources, greeting).
+NOT yet verified live: the follow-up (2-call) path and a typo query end to end. Gemini started returning 403 "billing account has an outstanding balance" for the key in .env.
+
+### Phase 2 update — OpenAI provider (default when `OPENAI_API_KEY` is set; `V2_LLM=gemini` switches back)
+
+Live results on gpt-4o-mini (typo, follow-up, "yes", off-topic all verified):
+- 1 LLM call for a fresh question, 2 for a follow-up that needs the history (e.g. "what causes it?" -> "What causes glaucoma?"; "yes" -> "What are the treatments for lissencephaly?").
+- First token ~3.0-4.8s, total 3.9-7.6s. Slower than Gemini (0.6-1.1s first token) and above the <2s goal. Gemini key was returning 403 (unpaid balance).
+- Vague question with no history ("what causes it?") used to produce an answer mixing unrelated diseases; the system prompt now makes it ask which condition is meant (verified).
+- OpenAI client timeout 30s (one request timed out once during testing; SDK retries 429/5xx twice).

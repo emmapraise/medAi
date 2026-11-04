@@ -129,6 +129,11 @@ class SearchV2:
 
     def search(self, query: str, k: int = 5) -> list[dict]:
         """Top-k distinct answers (best chunk per MedQuAD row), best first."""
+        return self.search_with_confidence(query, k)[0]
+
+    def search_with_confidence(self, query: str, k: int = 5) -> tuple[list[dict], float]:
+        """Same as search(), plus the best raw dense cosine for the query: RRF scores are rank-based,
+        so only this tells the agent whether anything in the corpus is actually close."""
         query = fix_typos(query, self.vocab)
         d = next(iter(self.dense.query_embed(query))).tolist()
         sp = next(iter(self.sparse.query_embed(query)))
@@ -150,7 +155,8 @@ class SearchV2:
                 continue
             seen.add(p.payload["row_id"])
             out.append({**p.payload, "score": p.score})
-        return out[:k]
+        top = self.client.query_points(COLLECTION, query=d, using="dense", limit=1).points
+        return out[:k], (top[0].score if top else 0.0)
 
 
 if __name__ == "__main__":
