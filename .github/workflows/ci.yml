@@ -1,0 +1,105 @@
+name: CI
+
+on:
+  push:
+    branches: [main, dev, v2]
+  pull_request:
+  workflow_dispatch:   # Actions tab > CI > Run workflow: tests, then deploys the branch you pick
+
+env:
+  UV_PYTHON: "3.11"   # the same Python as the Docker image
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - run: uv sync --frozen
+      - run: uv run ruff check .
+      - run: uv run pytest
+
+  frontend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run build
+
+  # Proves the image still builds (it also downloads and bakes the embedding models). Nothing is pushed.
+  docker:
+    needs: [backend, frontend]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker build -t mediqa:ci .
+
+  # Deploys to Cloud Run once the tests pass, on a push to main or a manual run. No Google key is stored in GitHub:
+  # the job logs in with a short-lived token (Workload Identity Federation); see scripts/setup-github-deploy.sh.
+  deploy:
+    needs: [backend, frontend]
+    if: github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
+    runs-on: ubuntu-latest
+    concurrency:
+      group: deploy-medai
+      cancel-in-progress: false   # never abandon a deploy half way
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      PROJECT: oneevent-485310
+      REGION: europe-west1
+      SERVICE: medai
+      IMAGE: europe-west1-docker.pkg.dev/oneevent-485310/cloud-run-source-deploy/medai
+    steps:
+      - name: Check the one-time Google setup was done
+        env:
+          PROVIDER: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          ACCOUNT: ${{ vars.GCP_SERVICE_ACCOUNT }}
+        run: |
+          if [ -z "$PROVIDER" ] || [ -z "$ACCOUNT" ]; then
+            echo "::error::Repository variables GCP_WORKLOAD_IDENTITY_PROVIDER and GCP_SERVICE_ACCOUNT are not set. Run scripts/setup-github-deploy.sh once (see docs/DEPLOY.md)."
+            exit 1
+          fi
+      - uses: actions/checkout@v4
+      - uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
+      - uses: google-github-actions/setup-gcloud@v2
+      - name: Build and push the image
+        run: |
+          gcloud auth configure-docker europe-west1-docker.pkg.dev --quiet
+          docker build -t "$IMAGE:$GITHUB_SHA" .
+          docker push "$IMAGE:$GITHUB_SHA"
+      # The new revision gets no traffic and its own URL, so a broken build never serves a visitor.
+      # The service's memory, scaling, secrets and variables are kept as they are.
+      - name: Deploy the new revision without traffic
+        run: |
+          gcloud run deploy "$SERVICE" --project "$PROJECT" --region "$REGION" \
+            --image "$IMAGE:$GITHUB_SHA" --no-traffic --tag candidate --quiet
+      - name: Smoke-test the new revision
+        run: |
+          URL=$(gcloud run services describe "$SERVICE" --project "$PROJECT" --region "$REGION" --format=json \
+            | jq -r '.status.traffic[] | select(.tag == "candidate") | .url')
+          test -n "$URL" || { echo "::error::no URL for the candidate revision"; exit 1; }
+          echo "candidate: $URL"
+          curl --fail --silent --show-error --retry 6 --retry-delay 5 --retry-all-errors "$URL/api/v2/health" \
+            | tee /dev/stderr | jq -e '.status == "healthy" and .total_points > 0'
+          curl --fail --silent --show-error "$URL/" | grep -q "<title>MediQA"
+      - name: Send traffic to the new revision
+        run: |
+          gcloud run services update-traffic "$SERVICE" --project "$PROJECT" --region "$REGION" --to-latest --quiet
+          gcloud run services update-traffic "$SERVICE" --project "$PROJECT" --region "$REGION" --remove-tags candidate --quiet
+      - name: Clean up the test URL if anything failed
+        if: failure()
+        run: gcloud run services update-traffic "$SERVICE" --project "$PROJECT" --region "$REGION" --remove-tags candidate --quiet || true

@@ -1,177 +1,141 @@
-import React, { useState, useEffect } from "react";
-import { Stethoscope, UserCheck, Plus, MessageSquare, History, Download, Trash2, Menu, X } from "lucide-react";
-import DoctorChat from "./components/DoctorChat";
+import { useCallback, useEffect, useState } from "react";
+import { Download, Plus } from "lucide-react";
+import Conversation from "./components/Conversation";
+import SessionList from "./components/SessionList";
+import Topics from "./components/Topics";
+import { Sidebar, TabBar } from "./components/Nav";
+import { deleteSession, listSessions } from "./lib/api";
+import { forgetSessionId, loadSessionIds, newSessionId, rememberSessionId } from "./lib/sessions";
+
+const WIDE = "(min-width: 900px)";
+const TITLES = { ask: "MediQA", topics: "Topics", history: "History" };
+
+function useMedia(query) {
+  const [matches, setMatches] = useState(() => window.matchMedia(query).matches);
+  useEffect(() => {
+    const mq = window.matchMedia(query);
+    const onChange = () => setMatches(mq.matches);
+    mq.addEventListener("change", onChange);
+    return () => mq.removeEventListener("change", onChange);
+  }, [query]);
+  return matches;
+}
 
 export default function App() {
-  const [activeTab, setActiveTab] = useState("chat");
-  const [sessionId, setSessionId] = useState(() => "patient_session_" + Math.floor(1000 + Math.random() * 9000));
-  const [pastSessions, setPastSessions] = useState([]);
-  const [deferredPrompt, setDeferredPrompt] = useState(null);
-  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const wide = useMedia(WIDE);
+  const [tab, setTab] = useState("ask");
+  const [sessionId, setSessionId] = useState(newSessionId);
+  const [sessions, setSessions] = useState([]);
+  const [queued, setQueued] = useState(null); // a question to send as soon as the Ask tab is showing
+  const [installPrompt, setInstallPrompt] = useState(null);
 
-  const fetchPastSessions = async () => {
+  const refreshSessions = useCallback(async () => {
     try {
-      const res = await fetch("/api/v1/analytics/sessions");
-      if (res.ok) {
-        const data = await res.json();
-        setPastSessions(data || []);
-      }
+      setSessions(await listSessions(loadSessionIds()));
     } catch (err) {
-      console.error(err);
-    }
-  };
-
-  useEffect(() => {
-    fetchPastSessions();
-
-    window.addEventListener("beforeinstallprompt", (e) => {
-      e.preventDefault();
-      setDeferredPrompt(e);
-    });
-
-    if ("serviceWorker" in navigator) {
-      navigator.serviceWorker.register("/sw.js").then((reg) => {
-        console.log("[PWA] Service Worker registered:", reg.scope);
-      });
+      console.error("Could not load conversations:", err);
     }
   }, []);
 
-  const handleNewSession = () => {
-    const newId = "patient_session_" + Math.floor(1000 + Math.random() * 9000);
-    setSessionId(newId);
-    setMobileMenuOpen(false);
+  useEffect(() => {
+    refreshSessions();
+    const onInstallReady = (e) => {
+      e.preventDefault();
+      setInstallPrompt(e);
+    };
+    window.addEventListener("beforeinstallprompt", onInstallReady);
+    if ("serviceWorker" in navigator) {
+      navigator.serviceWorker.register("/sw.js").catch((err) => console.error("Service worker failed:", err));
+    }
+    return () => window.removeEventListener("beforeinstallprompt", onInstallReady);
+  }, [refreshSessions]);
+
+  const startNew = () => {
+    setSessionId(newSessionId());
+    setTab("ask");
   };
 
-  const handleSelectSession = (sId) => {
-    setSessionId(sId);
-    setMobileMenuOpen(false);
+  const openSession = (id) => {
+    setSessionId(id);
+    setTab("ask");
   };
 
-  const handleDeleteSession = async (e, sId) => {
-    e.stopPropagation();
-    if (!window.confirm(`Are you sure you want to delete session ${sId}?`)) return;
+  const askFresh = (text) => {
+    // A topic question is a new subject, so it gets a new conversation rather than inheriting the last one's context.
+    setSessionId(newSessionId());
+    setQueued({ text, n: Date.now() });
+    setTab("ask");
+  };
 
+  const removeSession = async (id) => {
     try {
-      const res = await fetch(`/api/v1/analytics/sessions/${sId}`, {
-        method: "DELETE"
-      });
-      if (res.ok) {
-        setPastSessions((prev) => prev.filter((s) => s.session_id !== sId));
-        if (sessionId === sId) {
-          handleNewSession();
-        }
-      }
+      await deleteSession(id);
     } catch (err) {
-      console.error("Failed to delete session:", err);
+      console.error("Could not delete conversation:", err);
+      return;
     }
+    forgetSessionId(id);
+    setSessions((prev) => prev.filter((s) => s.session_id !== id));
+    if (id === sessionId) startNew();
   };
 
-  const handleTabChange = (tab) => {
-    setActiveTab(tab);
-    setMobileMenuOpen(false);
-  };
-
-  const handleInstallPWA = () => {
-    if (deferredPrompt) {
-      deferredPrompt.prompt();
-      deferredPrompt.userChoice.then((choice) => {
-        if (choice.outcome === "accepted") {
-          setDeferredPrompt(null);
-        }
-      });
-    } else {
-      alert("PWA Install Ready! Use your browser's 'Add to Home Screen' option.");
-    }
+  const install = async () => {
+    if (!installPrompt) return;
+    installPrompt.prompt();
+    const { outcome } = await installPrompt.userChoice;
+    if (outcome === "accepted") setInstallPrompt(null);
   };
 
   return (
-    <div className="app-container">
-      {/* Mobile Backdrop Overlay */}
-      {mobileMenuOpen && (
-        <div className="sidebar-backdrop" onClick={() => setMobileMenuOpen(false)} />
+    <div className={wide ? "app is-wide" : "app"}>
+      {wide && (
+        <Sidebar
+          tab={tab} onTab={setTab} sessions={sessions} activeId={sessionId}
+          onNew={startNew} onSelect={openSession} onDelete={removeSession} onInstall={installPrompt ? install : null}
+        />
       )}
 
-      <aside className={`sidebar ${mobileMenuOpen ? "mobile-open" : ""}`}>
-        <div className="brand">
-          <div className="brand-icon"><Stethoscope size={24} /></div>
-          <div className="brand-text">
-            <h2>MediQA<span>.AI</span></h2>
-            <p>Medical Intelligence & RAG</p>
-          </div>
-          <button className="mobile-close-btn" onClick={() => setMobileMenuOpen(false)}>
-            <X size={20} />
-          </button>
-        </div>
-
-        <button className="btn-primary" onClick={handleNewSession} style={{ justifyContent: "center", width: "100%", marginBottom: "16px" }}>
-          <Plus size={18} /> <span>+ New Chat</span>
-        </button>
-
-        {/* Past Sessions List */}
-        <div className="past-sessions-container">
-          <div className="sessions-header">
-            <History size={14} /> <span>Past Conversations</span>
-          </div>
-          <div className="sessions-list">
-            {pastSessions.map((s) => (
-              <div
-                key={s.session_id}
-                className={`session-item ${s.session_id === sessionId ? "active" : ""}`}
-                onClick={() => handleSelectSession(s.session_id)}
-              >
-                <MessageSquare size={14} className="session-icon" />
-                <div className="session-info">
-                  <span className="session-title">{s.preview ? s.preview.substring(0, 22) + "..." : s.session_id}</span>
-                  <span className="session-sub">{s.total_queries} turns • {s.session_id}</span>
-                </div>
-                <button
-                  type="button"
-                  className="delete-session-btn"
-                  onClick={(e) => handleDeleteSession(e, s.session_id)}
-                  title="Delete Session"
-                >
-                  <Trash2 size={13} />
-                </button>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        {deferredPrompt && (
-          <button className="pwa-install-btn" onClick={handleInstallPWA}>
-            <Download size={16} /> <span>Install PWA App</span>
-          </button>
+      <div className="stage">
+        {!wide && (
+          <header className="topbar">
+            <h1>{TITLES[tab]}</h1>
+            {tab === "ask" && (
+              <button type="button" className="tool" onClick={startNew}>
+                <Plus size={18} aria-hidden="true" /> New
+              </button>
+            )}
+          </header>
         )}
-      </aside>
 
-      <main className="main-content">
-        <header className="top-header">
-          <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
-            <button className="mobile-toggle-btn" onClick={() => setMobileMenuOpen(true)}>
-              <Menu size={22} />
-            </button>
-            <div className="header-title">
-              <h1>MediQA Assistant</h1>
-              <p>Evidence-based AI medical answering verified against clinical literature</p>
-            </div>
-          </div>
-          <div className="header-actions">
-            <div className="session-badge">
-              <span className="desktop-session-text">Active Session: {sessionId}</span>
-              <span className="mobile-session-text">{sessionId}</span>
-              <button onClick={handleNewSession} title="Start New Session"><Plus size={16} /></button>
-            </div>
-          </div>
-        </header>
-
-        <div className="tab-content">
-          <DoctorChat
+        {/* Ask stays mounted so an answer that is still streaming is not lost when switching tabs. */}
+        <main className="view" hidden={tab !== "ask"}>
+          <Conversation
             key={sessionId}
             sessionId={sessionId}
-            onMessageSent={fetchPastSessions}
+            queued={queued}
+            onQueuedHandled={() => setQueued(null)}
+            onAsked={() => { rememberSessionId(sessionId); refreshSessions(); }}
+            onBrowseTopics={() => setTab("topics")}
           />
-        </div>
-      </main>
+        </main>
+        {tab === "topics" && <main className="view"><Topics onAsk={askFresh} /></main>}
+        {tab === "history" && !wide && (
+          <main className="view">
+            <div className="page">
+              <div className="column">
+                <SessionList sessions={sessions} activeId={sessionId} onSelect={openSession} onDelete={removeSession} />
+                {installPrompt && (
+                  <button type="button" className="tool" onClick={install}>
+                    <Download size={18} aria-hidden="true" /> Install app
+                  </button>
+                )}
+              </div>
+            </div>
+          </main>
+        )}
+
+        {!wide && <TabBar tab={tab} onTab={setTab} />}
+      </div>
     </div>
   );
 }

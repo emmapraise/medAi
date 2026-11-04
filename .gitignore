@@ -13,3 +13,9 @@ dataset/
 qdrant_storage/
 node_modules/
 models/
+frontend/dist/
+.pytest_cache/
+.ruff_cache/
+.DS_Store
+.env.*
+!.env.example

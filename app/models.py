@@ -1,7 +1,10 @@
 import datetime
-from sqlalchemy import Column, Integer, String, Text, Float, DateTime, JSON, ForeignKey
+
+from sqlalchemy import JSON, Column, DateTime, Float, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import relationship
+
 from app.db import Base
+
 
 class ConversationSession(Base):
     __tablename__ = "conversation_sessions"
@@ -37,6 +40,7 @@ class RAGQueryLog(Base):
     estimated_cost_usd = Column(Float, default=0.0)
     user_feedback = Column(String, nullable=True, default=None)
     feedback_comment = Column(Text, nullable=True, default=None)
+    extra = Column(JSON, nullable=True)  # v2: citations, follow-ups, safety kind, disclaimer
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
 
     session = relationship("ConversationSession", back_populates="logs")

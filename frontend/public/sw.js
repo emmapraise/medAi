@@ -1,21 +1,16 @@
-const CACHE_NAME = "mediqa-pwa-v3";
-
-self.addEventListener("install", (event) => {
-  self.skipWaiting();
-});
+// Minimal service worker: network-first, so deploys are picked up immediately.
+// A fetch handler is what makes the app installable; nothing is cached offline.
+self.addEventListener("install", () => self.skipWaiting());
 
 self.addEventListener("activate", (event) => {
   event.waitUntil(
-    caches.keys().then((keys) => {
-      return Promise.all(keys.map((key) => caches.delete(key)));
-    }).then(() => self.clients.claim())
+    caches.keys()
+      .then((keys) => Promise.all(keys.map((key) => caches.delete(key))))
+      .then(() => self.clients.claim())
   );
 });
 
 self.addEventListener("fetch", (event) => {
   if (event.request.method !== "GET") return;
-  // Always fetch from network first so code updates are immediate
-  event.respondWith(
-    fetch(event.request).catch(() => caches.match(event.request))
-  );
+  event.respondWith(fetch(event.request));
 });
