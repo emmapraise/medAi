@@ -10,22 +10,5 @@ export function timeAgo(iso) {
   return "just now";
 }
 
-// Maps agent log lines to plain-language steps; the bracketed detail is kept as a second line.
-const STEP_LABELS = [
-  ["Conversational Greeting", "Replied directly, no search needed"],
-  ["Generate Query", "Turned your question into a search"],
-  ["Rewrite Query", "Tried a different search"],
-  ["Retrieve", "Searched the medical literature"],
-  ["Grade Documents", "Checked the sources were relevant"],
-  ["Generate Answer", "Wrote the answer from those sources"],
-  ["Grade Generation", "Checked the answer against the sources"],
-];
-
-export function describeStep(raw) {
-  const text = String(raw || "");
-  const match = text.match(/^\[Action: ([^\]]+)\]\s*(.*)$/s);
-  if (!match) return { label: text, detail: "" };
-  const [, action, detail] = match;
-  const known = STEP_LABELS.find(([key]) => action.startsWith(key));
-  return { label: known ? known[1] : action, detail };
-}
+// MedQuAD questions read "What is (are) Glaucoma ?"; show them the way a person would write them.
+export const tidyQuestion = (q) => String(q).replace(/\s*\(are\)/i, "").replace(/\s+\?$/, "?");

@@ -8,7 +8,7 @@ import asyncio
 import json
 import logging
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
 from fastapi.responses import StreamingResponse
 
 from app.agent import v2
@@ -16,9 +16,12 @@ from app.config import settings
 from app.core.cache import generate_cache_key, qa_cache
 from app.db import SessionLocal
 from app.models import RAGQueryLog
+from app.routers.analytics import analytics_rate_limiter
 from app.routers.qa import qa_rate_limiter
 from app.schemas import AskRequest
 from app.services.analytics_service import analytics_service
+from app.services.search_v2 import COLLECTION
+from qdrant_client import models
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -84,3 +87,36 @@ async def _stream(payload: AskRequest):
 async def ask_v2(payload: AskRequest):
     return StreamingResponse(_stream(payload), media_type="text/event-stream",
                              headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
+
+
+_topics: dict[str, list[str]] | None = None  # focus area -> its distinct MedQuAD questions, built once from Qdrant
+
+
+def _topic_index() -> dict[str, list[str]]:
+    global _topics
+    if _topics is None:
+        index: dict[str, set[str]] = {}
+        offset = None
+        only_questions = models.Filter(must=[models.FieldCondition(key="kind", match=models.MatchValue(value="question"))])
+        while True:
+            points, offset = v2._search.client.scroll(COLLECTION, scroll_filter=only_questions, limit=1000, offset=offset,
+                                                      with_payload=["focus_area", "question"], with_vectors=False)
+            for p in points:
+                if p.payload["focus_area"] != "General":  # MedQuAD's catch-all for rows with no topic: fragments, not a subject
+                    index.setdefault(p.payload["focus_area"], set()).add(p.payload["question"])
+            if offset is None:
+                break
+        _topics = {k: sorted(v) for k, v in index.items()}
+    return _topics
+
+
+@router.get("/topics", summary="Search health topics and their common questions", dependencies=[Depends(analytics_rate_limiter)])
+async def topics(q: str = Query("", max_length=60), limit: int = Query(12, ge=1, le=30)):
+    await v2.warmup()
+    index = await asyncio.to_thread(_topic_index)
+    q = " ".join(q.lower().split())
+    if q:
+        hits = sorted((t for t in index if q in t.lower()), key=lambda t: (not t.lower().startswith(q), t.lower()))
+    else:
+        hits = sorted(index, key=lambda t: (-len(index[t]), t.lower()))  # most-covered topics first
+    return [{"topic": t, "questions": index[t][:8]} for t in hits[:limit]]

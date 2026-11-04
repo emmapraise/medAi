@@ -67,3 +67,36 @@ def test_follow_ups_are_never_cached(client, fake_agent):
 
 def test_bad_session_id_is_rejected(client, fake_agent):
     assert client.post("/api/v2/ask", json={"question": "hi", "session_id": "bad id!"}).status_code == 422
+
+
+def test_topics_search_ranks_prefix_matches_first_and_lists_by_coverage_when_empty(client, monkeypatch):
+    async def noop():
+        return None
+    monkeypatch.setattr(ask_v2.v2, "warmup", noop)
+    monkeypatch.setattr(ask_v2, "_topics", {
+        "Glaucoma": ["What causes Glaucoma ?", "What is (are) Glaucoma ?"],
+        "Open-angle glaucoma": ["What is (are) Open-angle glaucoma ?"],
+        "Asthma": ["a", "b", "c"],
+    })
+    names = lambda r: [t["topic"] for t in r.json()]
+    assert names(client.get("/api/v2/topics?q=glau")) == ["Glaucoma", "Open-angle glaucoma"]
+    assert names(client.get("/api/v2/topics")) == ["Asthma", "Glaucoma", "Open-angle glaucoma"]
+    assert client.get("/api/v2/topics?q=zzz").json() == []
+    assert client.get("/api/v2/topics?limit=99").status_code == 422
+
+
+def test_general_catch_all_is_not_a_topic(monkeypatch):
+    class Pt:
+        def __init__(self, fa, q):
+            self.payload = {"focus_area": fa, "question": q}
+
+    class Client:
+        def scroll(self, *a, **k):
+            return [Pt("General", "What is?"), Pt("Asthma", "What causes Asthma ?")], None
+
+    class Fake:
+        client = Client()
+
+    monkeypatch.setattr(ask_v2.v2, "_search", Fake())
+    monkeypatch.setattr(ask_v2, "_topics", None)
+    assert ask_v2._topic_index() == {"Asthma": ["What causes Asthma ?"]}

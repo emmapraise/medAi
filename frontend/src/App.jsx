@@ -1,15 +1,33 @@
 import { useCallback, useEffect, useState } from "react";
-import { Menu } from "lucide-react";
-import Sidebar from "./components/Sidebar";
+import { Download, Plus } from "lucide-react";
 import Conversation from "./components/Conversation";
+import SessionList from "./components/SessionList";
+import Topics from "./components/Topics";
+import { Sidebar, TabBar } from "./components/Nav";
 import { deleteSession, listSessions } from "./lib/api";
 import { forgetSessionId, loadSessionIds, newSessionId, rememberSessionId } from "./lib/sessions";
 
+const WIDE = "(min-width: 900px)";
+const TITLES = { ask: "MediQA", topics: "Topics", history: "History" };
+
+function useMedia(query) {
+  const [matches, setMatches] = useState(() => window.matchMedia(query).matches);
+  useEffect(() => {
+    const mq = window.matchMedia(query);
+    const onChange = () => setMatches(mq.matches);
+    mq.addEventListener("change", onChange);
+    return () => mq.removeEventListener("change", onChange);
+  }, [query]);
+  return matches;
+}
+
 export default function App() {
+  const wide = useMedia(WIDE);
+  const [tab, setTab] = useState("ask");
   const [sessionId, setSessionId] = useState(newSessionId);
   const [sessions, setSessions] = useState([]);
+  const [queued, setQueued] = useState(null); // a question to send as soon as the Ask tab is showing
   const [installPrompt, setInstallPrompt] = useState(null);
-  const [navOpen, setNavOpen] = useState(false);
 
   const refreshSessions = useCallback(async () => {
     try {
@@ -21,13 +39,11 @@ export default function App() {
 
   useEffect(() => {
     refreshSessions();
-
     const onInstallReady = (e) => {
       e.preventDefault();
       setInstallPrompt(e);
     };
     window.addEventListener("beforeinstallprompt", onInstallReady);
-
     if ("serviceWorker" in navigator) {
       navigator.serviceWorker.register("/sw.js").catch((err) => console.error("Service worker failed:", err));
     }
@@ -36,12 +52,19 @@ export default function App() {
 
   const startNew = () => {
     setSessionId(newSessionId());
-    setNavOpen(false);
+    setTab("ask");
   };
 
   const openSession = (id) => {
     setSessionId(id);
-    setNavOpen(false);
+    setTab("ask");
+  };
+
+  const askFresh = (text) => {
+    // A topic question is a new subject, so it gets a new conversation rather than inheriting the last one's context.
+    setSessionId(newSessionId());
+    setQueued({ text, n: Date.now() });
+    setTab("ask");
   };
 
   const removeSession = async (id) => {
@@ -56,11 +79,6 @@ export default function App() {
     if (id === sessionId) startNew();
   };
 
-  const handleAsked = () => {
-    rememberSessionId(sessionId);
-    refreshSessions();
-  };
-
   const install = async () => {
     if (!installPrompt) return;
     installPrompt.prompt();
@@ -69,26 +87,55 @@ export default function App() {
   };
 
   return (
-    <div className="app">
-      <Sidebar
-        open={navOpen}
-        sessions={sessions}
-        activeId={sessionId}
-        onNew={startNew}
-        onSelect={openSession}
-        onDelete={removeSession}
-        onClose={() => setNavOpen(false)}
-        onInstall={installPrompt ? install : null}
-      />
-      <main className="main">
-        <header className="topbar">
-          <button type="button" className="icon-btn" onClick={() => setNavOpen(true)} aria-label="Open conversations">
-            <Menu size={20} />
-          </button>
-          <span className="topbar-title">MediQA</span>
-        </header>
-        <Conversation key={sessionId} sessionId={sessionId} onAsked={handleAsked} />
-      </main>
+    <div className={wide ? "app is-wide" : "app"}>
+      {wide && (
+        <Sidebar
+          tab={tab} onTab={setTab} sessions={sessions} activeId={sessionId}
+          onNew={startNew} onSelect={openSession} onDelete={removeSession} onInstall={installPrompt ? install : null}
+        />
+      )}
+
+      <div className="stage">
+        {!wide && (
+          <header className="topbar">
+            <h1>{TITLES[tab]}</h1>
+            {tab === "ask" && (
+              <button type="button" className="tool" onClick={startNew}>
+                <Plus size={18} aria-hidden="true" /> New
+              </button>
+            )}
+          </header>
+        )}
+
+        {/* Ask stays mounted so an answer that is still streaming is not lost when switching tabs. */}
+        <main className="view" hidden={tab !== "ask"}>
+          <Conversation
+            key={sessionId}
+            sessionId={sessionId}
+            queued={queued}
+            onQueuedHandled={() => setQueued(null)}
+            onAsked={() => { rememberSessionId(sessionId); refreshSessions(); }}
+            onBrowseTopics={() => setTab("topics")}
+          />
+        </main>
+        {tab === "topics" && <main className="view"><Topics onAsk={askFresh} /></main>}
+        {tab === "history" && !wide && (
+          <main className="view">
+            <div className="page">
+              <div className="column">
+                <SessionList sessions={sessions} activeId={sessionId} onSelect={openSession} onDelete={removeSession} />
+                {installPrompt && (
+                  <button type="button" className="tool" onClick={install}>
+                    <Download size={18} aria-hidden="true" /> Install app
+                  </button>
+                )}
+              </div>
+            </div>
+          </main>
+        )}
+
+        {!wide && <TabBar tab={tab} onTab={setTab} />}
+      </div>
     </div>
   );
 }

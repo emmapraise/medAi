@@ -1,14 +1,17 @@
-const BASE = "/api/v1";
+const V1 = "/api/v1";
+const V2 = "/api/v2";
 
-async function request(path, options = {}) {
-  const res = await fetch(BASE + path, options);
+async function failure(res) {
   const body = await res.json().catch(() => ({}));
-  if (!res.ok) {
-    const detail = body.detail;
-    const message = typeof detail === "string" ? detail : detail?.detail;
-    throw new Error(message || "Something went wrong. Please try again.");
-  }
-  return body;
+  const detail = body.detail;
+  const message = typeof detail === "string" ? detail : detail?.detail;
+  return new Error(message || "Something went wrong. Please try again.");
+}
+
+async function request(url, options = {}) {
+  const res = await fetch(url, options);
+  if (!res.ok) throw await failure(res);
+  return res.json().catch(() => ({}));
 }
 
 const json = (method, payload, signal) => ({
@@ -19,22 +22,36 @@ const json = (method, payload, signal) => ({
 });
 
 export const listSessions = (ids) =>
-  ids.length ? request(`/analytics/sessions?ids=${encodeURIComponent(ids.join(","))}`) : Promise.resolve([]);
+  ids.length ? request(`${V1}/analytics/sessions?ids=${encodeURIComponent(ids.join(","))}`) : Promise.resolve([]);
 
-export const getSession = (id) => request(`/analytics/sessions/${encodeURIComponent(id)}`);
+export const getSession = (id) => request(`${V1}/analytics/sessions/${encodeURIComponent(id)}`);
 
-export const deleteSession = (id) => request(`/analytics/sessions/${encodeURIComponent(id)}`, { method: "DELETE" });
+export const deleteSession = (id) => request(`${V1}/analytics/sessions/${encodeURIComponent(id)}`, { method: "DELETE" });
 
-export const ask = (question, sessionId, signal) =>
-  request("/ask", json("POST", { question, session_id: sessionId }, signal));
+export const getTopics = (q, signal) => request(`${V2}/topics?q=${encodeURIComponent(q)}`, { signal });
 
-export function sendFeedback({ logId, traceId, positive }) {
-  const calls = [];
-  if (logId) {
-    calls.push(request("/analytics/feedback", json("POST", { log_id: logId, feedback: positive ? "positive" : "negative" })));
+export function sendFeedback({ logId, positive }) {
+  return request(`${V1}/analytics/feedback`, json("POST", { log_id: logId, feedback: positive ? "positive" : "negative" }));
+}
+
+/** Server-sent events from POST /api/v2/ask, as an async iterator of parsed event objects. */
+export async function* askStream(question, sessionId, signal) {
+  const res = await fetch(`${V2}/ask`, json("POST", { question, session_id: sessionId }, signal));
+  if (!res.ok) throw await failure(res);
+
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) return;
+    buffer += decoder.decode(value, { stream: true });
+    let end;
+    while ((end = buffer.indexOf("\n\n")) >= 0) {
+      const block = buffer.slice(0, end);
+      buffer = buffer.slice(end + 2);
+      const data = block.split("\n").find((line) => line.startsWith("data: "));
+      if (data) yield JSON.parse(data.slice(6));
+    }
   }
-  if (traceId) {
-    calls.push(request("/feedback", json("POST", { trace_id: traceId, value: positive ? 1 : 0, name: "user-feedback" })));
-  }
-  return Promise.allSettled(calls);
 }
