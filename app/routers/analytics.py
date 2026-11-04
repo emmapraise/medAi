@@ -180,6 +180,7 @@ def get_session_history(session_id: SessionIdPath, db: DbSession):
                 "is_grounded": log.is_grounded or "unknown",
                 "is_useful": log.is_useful or "unknown",
                 "execution_trace": log.execution_trace or [],
+                "extra": log.extra or {},
                 "user_feedback": log.user_feedback,
                 "feedback_comment": log.feedback_comment,
                 "latency_seconds": round(log.latency_seconds or 0.0, 2),

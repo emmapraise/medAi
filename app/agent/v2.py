@@ -150,6 +150,12 @@ async def _stream_llm(prompt: str, history: list[dict]) -> AsyncIterator[tuple[s
     yield "", usage
 
 
+async def warmup() -> None:
+    """Load the embedding models once at startup so the first request is not the slow one."""
+    global _search
+    _search = _search or await asyncio.to_thread(SearchV2)
+
+
 async def run(question: str, history: list[dict] | None = None) -> AsyncIterator[dict]:
     global _search
     history = history or []
@@ -178,7 +184,7 @@ async def run(question: str, history: list[dict] | None = None) -> AsyncIterator
             stats["prompt_tokens"] += p
             stats["completion_tokens"] += c
         yield {"type": "status", "text": "Searching medical sources"}
-        _search = _search or await asyncio.to_thread(SearchV2)
+        await warmup()
         docs, confidence = await asyncio.to_thread(_search.search_with_confidence, query, TOP_K)
         if not docs or confidence < MIN_DENSE:
             yield {"type": "token", "text": NOT_FOUND}

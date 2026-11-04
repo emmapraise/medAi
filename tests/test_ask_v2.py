@@ -1,0 +1,69 @@
+import json
+
+import pytest
+
+from app.routers import ask_v2
+
+
+def parse(body: str) -> list[dict]:
+    out = []
+    for block in body.strip().split("\n\n"):
+        event, data = block.split("\n")
+        out.append({"event": event.removeprefix("event: "), **json.loads(data.removeprefix("data: "))})
+    return out
+
+
+@pytest.fixture()
+def fake_agent(monkeypatch):
+    calls = []
+
+    async def fake_run(question, history=None):
+        calls.append({"question": question, "history": history})
+        cites = [{"n": 1, "question": "What causes Glaucoma ?", "source": "NIH", "focus_area": "Glaucoma", "passage": "p"}]
+        yield {"type": "status", "text": "Searching medical sources"}
+        yield {"type": "token", "text": "Pressure damages the nerve [1]."}
+        yield {"type": "citations", "items": cites}
+        yield {"type": "done", "answer": "Pressure damages the nerve [1].", "latency_s": 1.0, "llm_calls": 1, "prompt_tokens": 100,
+               "completion_tokens": 20, "citations": cites, "followups": ["Is it inherited?"], "abstained": False, "safety": None,
+               "disclaimer": "d", "query": question, "confidence": 0.9}
+
+    monkeypatch.setattr(ask_v2.v2, "run", fake_run)
+    return calls
+
+
+def test_stream_has_ordered_events_and_a_saved_log_id(client, fake_agent):
+    r = client.post("/api/v2/ask", json={"question": "what causes glaucoma?", "session_id": "s1"})
+    assert r.headers["content-type"].startswith("text/event-stream")
+    evs = parse(r.text)
+    assert [e["event"] for e in evs] == ["status", "token", "citations", "done"]
+    assert evs[-1]["id"] and evs[-1]["followups"] == ["Is it inherited?"]
+
+
+def test_history_is_persisted_and_fed_to_the_next_turn(client, fake_agent):
+    client.post("/api/v2/ask", json={"question": "what causes glaucoma?", "session_id": "s1"})
+    client.post("/api/v2/ask", json={"question": "how is it treated?", "session_id": "s1"})
+    assert fake_agent[1]["history"] == [{"role": "user", "content": "what causes glaucoma?"},
+                                        {"role": "assistant", "content": "Pressure damages the nerve [1]."}]
+    msgs = client.get("/api/v1/analytics/sessions/s1").json()["messages"]
+    assert len(msgs) == 2 and msgs[0]["extra"]["citations"][0]["source"] == "NIH"
+
+
+def test_repeat_first_turn_question_is_served_from_cache_without_the_agent(client, fake_agent):
+    ask = lambda sid: parse(client.post("/api/v2/ask", json={"question": "What causes glaucoma?", "session_id": sid}).text)
+    ask("a")
+    again = ask("b")
+    assert len(fake_agent) == 1
+    assert again[-1]["cached"] is True and again[-1]["llm_calls"] == 0 and again[-1]["id"]
+
+
+def test_follow_ups_are_never_cached(client, fake_agent):
+    client.post("/api/v2/ask", json={"question": "hello there", "session_id": "s2"})
+    client.post("/api/v2/ask", json={"question": "and treatment?", "session_id": "s2"})
+    client.post("/api/v2/ask", json={"question": "and treatment?", "session_id": "s3"})  # first turn of a new session
+    client.post("/api/v2/ask", json={"question": "and treatment?", "session_id": "s2"})  # follow-up again
+    assert len(fake_agent) == 4  # the follow-ups never read or wrote the cache, so none of the four calls was skipped
+    assert fake_agent[-1]["history"] and not fake_agent[2]["history"]
+
+
+def test_bad_session_id_is_rejected(client, fake_agent):
+    assert client.post("/api/v2/ask", json={"question": "hi", "session_id": "bad id!"}).status_code == 422

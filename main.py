@@ -12,9 +12,9 @@ from langfuse import get_client
 
 from app.config import settings
 from app.logging_config import configure_logging
-from app.routers import analytics, health, ingest, qa, search
-from app.services.agent_service import agent_service
-from app.services.search_service import search_engine
+from app.agent import v2
+from app.routers import analytics, ask_v2, health, ingest, qa, search
+from app.services.analytics_service import analytics_service
 
 configure_logging()
 logger = logging.getLogger(__name__)
@@ -22,13 +22,9 @@ logger = logging.getLogger(__name__)
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     logger.info("Starting Medical QA Server")
-    # Run both initializations concurrently but WAIT for them to finish
-    # before accepting traffic. This prevents "connection error" on first request.
-    loop = asyncio.get_running_loop()
-    await asyncio.gather(
-        loop.run_in_executor(None, search_engine.initialize),
-        loop.run_in_executor(None, agent_service.initialize),
-    )
+    # Wait for the v2 models and the DB before accepting traffic, so the first request is not a connection error.
+    # The v1 engine (PubMedBERT, ~900MB) is no longer preloaded; v1 endpoints still initialise it on first use.
+    await asyncio.gather(v2.warmup(), asyncio.to_thread(analytics_service.initialize_db))
     logger.info("All services ready; accepting requests")
     yield
     logger.info("Shutting down Medical QA Server")
@@ -56,6 +52,7 @@ app.add_middleware(
 app.include_router(health.router, prefix="/api/v1", tags=["Health"])
 app.include_router(search.router, prefix="/api/v1", tags=["Search"])
 app.include_router(qa.router, prefix="/api/v1", tags=["QA Agent"])
+app.include_router(ask_v2.router, prefix="/api/v2", tags=["QA Agent v2"])
 app.include_router(ingest.router, prefix="/api/v1", tags=["Ingestion"])
 app.include_router(analytics.router, prefix="/api/v1/analytics", tags=["Analytics & Cost Monitoring"])
 

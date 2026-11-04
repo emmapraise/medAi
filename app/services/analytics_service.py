@@ -5,7 +5,7 @@ from typing import Any
 from sqlalchemy import func, inspect, text
 from sqlalchemy.orm import Session
 
-from app.db import SessionLocal, engine
+from app.db import Base, SessionLocal, engine
 from app.models import ConversationSession, RAGQueryLog
 
 logger = logging.getLogger(__name__)
@@ -13,11 +13,13 @@ logger = logging.getLogger(__name__)
 class AnalyticsService:
     def initialize_db(self):
         try:
+            Base.metadata.create_all(engine)  # idempotent; the ALTERs below add columns to tables that already existed
             with engine.connect() as conn:
                 url_str = str(engine.url).lower()
                 if "postgresql" in url_str:
                     conn.execute(text("ALTER TABLE rag_query_logs ADD COLUMN IF NOT EXISTS user_feedback VARCHAR;"))
                     conn.execute(text("ALTER TABLE rag_query_logs ADD COLUMN IF NOT EXISTS feedback_comment TEXT;"))
+                    conn.execute(text("ALTER TABLE rag_query_logs ADD COLUMN IF NOT EXISTS extra JSON;"))
                     conn.commit()
                 else:
                     inspector = inspect(engine)
@@ -26,6 +28,8 @@ class AnalyticsService:
                         conn.execute(text("ALTER TABLE rag_query_logs ADD COLUMN user_feedback VARCHAR;"))
                     if "feedback_comment" not in existing_cols:
                         conn.execute(text("ALTER TABLE rag_query_logs ADD COLUMN feedback_comment TEXT;"))
+                    if "extra" not in existing_cols:
+                        conn.execute(text("ALTER TABLE rag_query_logs ADD COLUMN extra JSON;"))
                     conn.commit()
             logger.info("[AnalyticsService] Database tables verified & initialized.")
         except Exception as e:
@@ -58,7 +62,8 @@ class AnalyticsService:
         model_used: str,
         latency_seconds: float,
         prompt_tokens: int = 0,
-        completion_tokens: int = 0
+        completion_tokens: int = 0,
+        extra: dict | None = None
     ) -> RAGQueryLog:
         db: Session = SessionLocal()
         try:
@@ -93,7 +98,8 @@ class AnalyticsService:
                 prompt_tokens=prompt_tokens,
                 completion_tokens=completion_tokens,
                 total_tokens=total_tokens,
-                estimated_cost_usd=cost
+                estimated_cost_usd=cost,
+                extra=extra
             )
             db.add(log_entry)
             db.commit()
@@ -120,7 +126,8 @@ class AnalyticsService:
                 prompt_tokens=prompt_tokens,
                 completion_tokens=completion_tokens,
                 total_tokens=prompt_tokens + completion_tokens,
-                estimated_cost_usd=cost
+                estimated_cost_usd=cost,
+                extra=extra
             )
         finally:
             db.close()

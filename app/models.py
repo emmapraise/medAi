@@ -40,6 +40,7 @@ class RAGQueryLog(Base):
     estimated_cost_usd = Column(Float, default=0.0)
     user_feedback = Column(String, nullable=True, default=None)
     feedback_comment = Column(Text, nullable=True, default=None)
+    extra = Column(JSON, nullable=True)  # v2: citations, follow-ups, safety kind, disclaimer
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
 
     session = relationship("ConversationSession", back_populates="logs")

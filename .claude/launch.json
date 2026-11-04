@@ -1,6 +1,28 @@
 {
   "version": "0.0.1",
   "configurations": [
-    { "name": "frontend", "runtimeExecutable": "npm", "runtimeArgs": ["--prefix", "frontend", "run", "dev", "--", "--port", "5173"], "port": 5173 }
+    {
+      "name": "frontend",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": [
+        "--prefix",
+        "frontend",
+        "run",
+        "dev",
+        "--",
+        "--port",
+        "5173"
+      ],
+      "port": 5173
+    },
+    {
+      "name": "mediqa-v2-api",
+      "runtimeExecutable": "sh",
+      "runtimeArgs": [
+        "-c",
+        "DATABASE_URL=sqlite:////private/tmp/claude-502/-Users-emmapraise-Documents-AI-Engineering-MediQA-Bot/156c4191-ae44-426b-b5ff-f44440298c89/scratchpad/v2_dev.db RATE_LIMIT_ENABLED=false .venv/bin/python -m uvicorn main:app --port 8081"
+      ],
+      "port": 8081
+    }
   ]
 }
