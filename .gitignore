@@ -19,3 +19,6 @@ frontend/dist/
 .DS_Store
 .env.*
 !.env.example
+
+# Vercel: built by vercel.json buildCommand
+public/

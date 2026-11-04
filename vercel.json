@@ -1,0 +1,23 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "buildCommand": "cd frontend && npm ci && npm run build && cd .. && mkdir -p public && cp -R frontend/dist/. public/",
+  "rewrites": [{ "source": "/s/:token", "destination": "/index.html" }],
+  "headers": [
+    {
+      "source": "/s/:token",
+      "headers": [
+        { "key": "X-Robots-Tag", "value": "noindex, nofollow" },
+        { "key": "Referrer-Policy", "value": "no-referrer" },
+        { "key": "Cache-Control", "value": "no-cache" }
+      ]
+    },
+    { "source": "/sw.js", "headers": [{ "key": "Cache-Control", "value": "no-cache" }] }
+  ],
+  "functions": {
+    "main.py": {
+      "maxDuration": 60,
+      "includeFiles": "vercel_models/**",
+      "excludeFiles": "{frontend/**,public/**,tests/**,eval/**,docs/**,scripts/**,dataset/**,qdrant_storage/**,models/**,*.ipynb}"
+    }
+  }
+}

@@ -15,6 +15,10 @@ from app.logging_config import configure_logging
 from app.routers import analytics, ask_v2, health, share
 from app.services.analytics_service import analytics_service
 
+# Vercel's filesystem is read-only, so the embedding models ship inside the deployment (see docs/VERCEL.md).
+if os.getenv("VERCEL"):
+    os.environ.setdefault("FASTEMBED_CACHE_PATH", str(Path(__file__).resolve().parent / "vercel_models"))
+
 configure_logging()
 logger = logging.getLogger(__name__)
 
