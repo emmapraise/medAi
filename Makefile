@@ -1,4 +1,4 @@
-.PHONY: help test lint format install build-frontend build run dev qdrant v2 compose-up compose-down docker-build docker-run ingest clean
+.PHONY: help test lint format install build-frontend build run dev qdrant v2 eval compose-up compose-down docker-build docker-run ingest clean
 
 # Default port
 PORT ?= 8000
@@ -35,6 +35,9 @@ run: ## Run MediQA Bot application locally with uv
 dev: ## Run with hot-reloading for local development
 	uv run uvicorn main:app --host 0.0.0.0 --port $(PORT) --reload
 
+eval: ## Score the v2 retriever on the 105 retrieval cases (needs the local Qdrant index)
+	uv run python eval/run_retrieval.py v2
+
 qdrant: ## Start the local Qdrant container that v2 searches (no-op if it is already running)
 	docker start qdrant_db
 
@@ -50,8 +53,8 @@ compose-down: ## Stop and remove all Docker Compose containers
 docker-build: ## Build standalone Docker container image
 	docker build -t mediqa-bot:latest .
 
-docker-run: ## Run standalone Docker container locally
-	docker run -p $(PORT):8080 --env-file .env mediqa-bot:latest
+docker-run: ## Run the image locally on http://localhost:$(PORT) (the container listens on 7860)
+	docker run -p $(PORT):7860 --env-file .env mediqa-bot:latest
 
 ingest: ## Build or rebuild the v2 search index (V2_QDRANT_URL picks the Qdrant; ARGS=--resume continues a partial run)
 	uv run python -m app.services.search_v2 $(ARGS)

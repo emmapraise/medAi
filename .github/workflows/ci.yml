@@ -2,8 +2,11 @@ name: CI
 
 on:
   push:
-    branches: [main, dev]
+    branches: [main, dev, v2]
   pull_request:
+
+env:
+  UV_PYTHON: "3.11"   # the same Python as the Docker image
 
 jobs:
   backend:
@@ -30,3 +33,11 @@ jobs:
       - run: npm ci
       - run: npm run lint
       - run: npm run build
+
+  # Proves the image still builds (it also downloads and bakes the embedding models). Nothing is pushed.
+  docker:
+    needs: [backend, frontend]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker build -t mediqa:ci .

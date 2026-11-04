@@ -41,7 +41,9 @@ def test_low_confidence_abstains_without_calling_the_llm(monkeypatch):
 def test_answer_streams_one_llm_call_and_returns_only_cited_sources(monkeypatch):
     class Fake:
         def search_with_confidence(self, q, k):
-            d = lambda n: {"question": f"Q{n}", "source": "GARD", "focus_area": "Glaucoma", "chunk": f"passage {n}"}
+            def d(n):
+                return {"question": f"Q{n}", "source": "GARD", "focus_area": "Glaucoma", "chunk": f"passage {n}"}
+
             return [d(1), d(2)], 0.9
 
     async def fake_llm(prompt, history, plain=False):

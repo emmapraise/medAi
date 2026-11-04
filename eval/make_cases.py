@@ -61,7 +61,7 @@ BEHAVIOUR = {
 
 
 def typo(word: str) -> str:
-    i = random.randrange(1, len(word) - 2)
+    i = random.randrange(1, len(word) - 2)  # noqa: S311 - seeded on purpose: reproducible test data, not security
     return word[:i] + word[i + 1] + word[i] + word[i + 2:]
 
 
@@ -76,7 +76,7 @@ def main():
 
     for tpl, paras in PARAPHRASES.items():
         gold_rows = df[df.focus_area.str.len().between(5, 40)]
-        gold_rows = gold_rows[gold_rows.apply(lambda r: r.question == tpl.replace("{F}", r.focus_area), axis=1)]
+        gold_rows = gold_rows[gold_rows.apply(lambda r, tpl=tpl: r.question == tpl.replace("{F}", r.focus_area), axis=1)]
         picked = gold_rows.sample(PER_TEMPLATE, random_state=42)
         for k, (_, r) in enumerate(picked.iterrows()):
             add("paraphrase", paras[k % len(paras)].replace("{F}", r.focus_area.lower()), r.question)

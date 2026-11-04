@@ -13,3 +13,9 @@ tests
 *.ipynb
 .pytest_cache
 .ruff_cache
+eval
+docs
+.claude
+.github
+*.md
+!README.md

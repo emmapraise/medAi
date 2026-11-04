@@ -8,13 +8,13 @@ import re
 from collections import Counter
 from pathlib import Path
 
-import pandas as pd
 from fastembed import SparseTextEmbedding, TextEmbedding
 from qdrant_client import QdrantClient, models
 from tqdm import tqdm
 
 # Own env vars on purpose: v2 must never pick up the cloud QDRANT_URL from .env by accident.
 QDRANT_URL = os.getenv("V2_QDRANT_URL", "http://localhost:6333")
+QDRANT_API_KEY = os.getenv("V2_QDRANT_API_KEY")  # only for a remote cluster such as Qdrant Cloud
 COLLECTION = os.getenv("V2_COLLECTION", "mediqa_v2")
 DENSE_MODEL = os.getenv("V2_DENSE_MODEL", "BAAI/bge-small-en-v1.5")
 CHUNK_WORDS = int(os.getenv("V2_CHUNK_WORDS", "150"))
@@ -37,6 +37,8 @@ def chunk(text: str, limit: int = CHUNK_WORDS) -> list[str]:
 
 
 def write_vocab(csv_path: str = "dataset/medquad.csv") -> int:
+    import pandas as pd  # indexing only: the running app never needs pandas
+
     df = pd.read_csv(csv_path).fillna("")
     counts = Counter(w for t in (df["question"] + " " + df["answer"]) for w in re.findall(r"[a-z]+", str(t).lower()))
     VOCAB_FILE.write_text("\n".join(f"{w} {n}" for w, n in counts.most_common()) + "\n")
@@ -64,12 +66,14 @@ def fix_typos(query: str, vocab: Counter) -> str:
 
 class SearchV2:
     def __init__(self):
-        self.client = QdrantClient(url=QDRANT_URL, timeout=30)
+        self.client = QdrantClient(url=QDRANT_URL, api_key=QDRANT_API_KEY, timeout=30)
         self.dense = TextEmbedding(DENSE_MODEL)
         self.sparse = SparseTextEmbedding("Qdrant/bm25")
         self.vocab = load_vocab()
 
     def ingest(self, csv_path: str = "dataset/medquad.csv", batch: int = 256, resume: bool = False) -> int:
+        import pandas as pd
+
         write_vocab(csv_path)
         df = pd.read_csv(csv_path)
         for col, default in (("question", ""), ("answer", ""), ("focus_area", "General"), ("source", "Unknown")):
@@ -111,6 +115,8 @@ class SearchV2:
         'can I pass X to my children' can match 'Is X inherited ?' on intent. Same collection; search()
         ranks them in their own list (kind filter) so they don't crowd out the chunk ranking."""
         self.client.create_payload_index(COLLECTION, "kind", models.PayloadSchemaType.KEYWORD)
+        import pandas as pd
+
         df = pd.read_csv(csv_path).fillna({"question": "", "answer": "", "focus_area": "General", "source": "Unknown"})
         self.client.delete(COLLECTION, models.FilterSelector(filter=models.Filter(must=[models.FieldCondition(key="kind", match=models.MatchValue(value="question"))])))
         for s in tqdm(range(0, len(df), batch), desc="questions", unit="batch", mininterval=5):

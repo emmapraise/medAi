@@ -49,7 +49,9 @@ def test_history_is_persisted_and_fed_to_the_next_turn(client, fake_agent):
 
 
 def test_repeat_first_turn_question_is_served_from_cache_without_the_agent(client, fake_agent):
-    ask = lambda sid: parse(client.post("/api/v2/ask", json={"question": "What causes glaucoma?", "session_id": sid}).text)
+    def ask(sid):
+        return parse(client.post("/api/v2/ask", json={"question": "What causes glaucoma?", "session_id": sid}).text)
+
     ask("a")
     again = ask("b")
     assert len(fake_agent) == 1
@@ -78,7 +80,9 @@ def test_topics_search_ranks_prefix_matches_first_and_lists_by_coverage_when_emp
         "Open-angle glaucoma": ["What is (are) Open-angle glaucoma ?"],
         "Asthma": ["a", "b", "c"],
     })
-    names = lambda r: [t["topic"] for t in r.json()]
+    def names(r):
+        return [t["topic"] for t in r.json()]
+
     assert names(client.get("/api/v2/topics?q=glau")) == ["Glaucoma", "Open-angle glaucoma"]
     assert names(client.get("/api/v2/topics")) == ["Asthma", "Glaucoma", "Open-angle glaucoma"]
     assert client.get("/api/v2/topics?q=zzz").json() == []
@@ -103,7 +107,9 @@ def test_general_catch_all_is_not_a_topic(monkeypatch):
 
 
 def test_plain_language_reaches_the_agent_and_has_its_own_cache_entry(client, fake_agent):
-    ask = lambda level, sid: client.post("/api/v2/ask", json={"question": "What causes glaucoma?", "session_id": sid, "reading_level": level})
+    def ask(level, sid):
+        return client.post("/api/v2/ask", json={"question": "What causes glaucoma?", "session_id": sid, "reading_level": level})
+
     ask("standard", "p1")
     ask("simple", "p2")   # same question, different level: must not be served the standard answer
     ask("simple", "p3")   # now it is cached

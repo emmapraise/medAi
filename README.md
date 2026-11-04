@@ -1,3 +1,15 @@
+---
+title: MediQA
+emoji: 🩺
+colorFrom: green
+colorTo: blue
+sdk: docker
+app_port: 7860
+pinned: false
+---
+
+> **v2 branch.** This header configures the Hugging Face Space (see [docs/DEPLOY.md](docs/DEPLOY.md)); the plan and results are in [docs/V2_PLAN.md](docs/V2_PLAN.md). The sections below still describe v1 and have not been rewritten yet.
+
 # 🩺 MediQA Bot — AI Medical Intelligence & Self-Corrective RAG (CRAG) PWA
 
 [![FastAPI](https://img.shields.io/badge/FastAPI-00558C?style=for-the-badge&logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/)
