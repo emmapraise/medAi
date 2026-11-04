@@ -222,3 +222,10 @@ Done and checked locally:
 - **CI:** the existing `.github/workflows/ci.yml` (backend ruff + pytest, frontend lint + build, same action versions) extended with the `v2` branch trigger, a Python 3.11 pin matching the image, and a Docker build job (no push). Valid YAML; the additions have not run on GitHub. `ruff check` passes (6 older findings fixed).
 - **Docs:** `docs/DEPLOY.md` (Hugging Face Space, Qdrant Cloud, Neon, secrets, risks, Cloud Run, cutover). README got the Space header.
 Not done: a real deploy (needs your Hugging Face, Qdrant Cloud and Neon accounts and keys); the eval gate in CI (needs an index); `docker-compose.yml` and the README body still describe v1; Qdrant Cloud copy not tried over TLS with an API key.
+
+## Deployed
+
+v2 runs on Cloud Run as `medai` (https://medai-19247955175.europe-west1.run.app, project `oneevent-485310`, europe-west1), public, with the index on Qdrant Cloud (`mediqa_v2`, 47,478 points) and the existing Neon database (v1's 18 conversations and 40 questions untouched; one optional column added). Hugging Face was ruled out: Docker Spaces on the free tier need PRO (HTTP 402). There was no v1 service left to replace (its README URL was dead), so this is a new service at the same URL. Details, redeploy, take-offline and rollback commands: `docs/DEPLOY.md`.
+Open: the paused auth work (stash), README body and `docker-compose.yml` still describe v1, no CI eval gate, the public health endpoint shows the Qdrant hostname, no billing alert, and the Hugging Face token that sits in an old local commit (branch `test`) of a public repo should be rotated.
+
+CI/CD: `.github/workflows/ci.yml` now also deploys (push to `main`, or a manual run): build and push the image, deploy a no-traffic revision, smoke-test its own URL, then shift traffic. Keyless Google login (Workload Identity Federation) via `scripts/setup-github-deploy.sh`, which the owner runs once. The first deploy of `medai` was done by hand from a laptop, before this existed. Not yet exercised on GitHub; `v2` is not pushed there.

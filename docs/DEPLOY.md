@@ -1,7 +1,66 @@
 # Deploying MediQA v2
 
-Target: a **Hugging Face Space (Docker)**. Cloud Run works with the same image (see the end). Nothing here has been
-deployed yet: each step says what was verified locally and what was not.
+## Where it actually runs: Cloud Run
+
+**https://medai-19247955175.europe-west1.run.app** (service `medai`, project `oneevent-485310`, europe-west1; public).
+1 GiB memory, 1 CPU, 0 to 3 instances, 300 s timeout. The OpenAI key, Qdrant key and Neon URL are Secret Manager secrets
+(`mediqa-openai-key`, `mediqa-qdrant-key`, `mediqa-database-url`); the Qdrant cluster URL is a plain variable. The index
+is the `mediqa_v2` collection on the Qdrant Cloud cluster (47,478 points, copied from the local one in about 16 minutes;
+v1's `medical_knowledge_base_hybrid` collection sits next to it, untouched). The database is the Neon `medical_db` that
+v1 used: v2 only adds one optional column, `rag_query_logs.extra`, and v1's rows are untouched.
+
+- **Redeploy by hand, if the pipeline is not set up or is down** (keeps the settings, secrets and variables already on the service):
+  `gcloud run deploy medai --project oneevent-485310 --region europe-west1 --source .`
+- **Take it offline:** `gcloud run services remove-iam-policy-binding medai --project oneevent-485310 --region europe-west1 --member=allUsers --role=roles/run.invoker`
+- **Roll back:** after a second revision exists, `gcloud run services update-traffic medai --project oneevent-485310 --region europe-west1 --to-revisions=REVISION=100` (`gcloud run revisions list --service medai ...` shows the names).
+- Cloud Run reserves the `/healthz` path (it answers 404 from outside); it checks the port instead, and `/api/v2/health` is the real health check.
+- Verified before it was made public: private by default (403), health with Qdrant Cloud connected and all points, a real answer with
+  sources saved to Neon, the rate limit (429 after 5 questions a minute, and a forged `X-Forwarded-For` does not get around
+  it), no errors in the logs.
+- Known gaps: `/api/v2/health` shows the Qdrant cluster hostname to anyone; no billing alert is set; no uptime check.
+
+## Deploying from GitHub (CI/CD)
+
+`.github/workflows/ci.yml` tests and then deploys. On every push to `main`, or a manual run (Actions > CI > Run workflow,
+pick the branch), once lint and the tests pass the `deploy` job: builds the image and pushes it to Artifact Registry,
+deploys it as a **new revision with no traffic** and its own test URL, checks `/api/v2/health` and the UI title on that URL,
+and only then sends it the traffic. A build that fails its check never serves a visitor. The service's memory, scaling,
+secrets and variables are left as they are (they are not in GitHub).
+
+**No Google key is stored in GitHub.** The job logs in with a short-lived token (Workload Identity Federation), and only
+this repository can get one.
+
+**One-time setup, which you run yourself** (it changes IAM; the pipeline cannot do it for itself):
+
+```bash
+DRY_RUN=1 bash scripts/setup-github-deploy.sh   # prints the 11 commands it would run; changes nothing
+bash scripts/setup-github-deploy.sh             # does it, and sets the two GitHub variables with gh
+```
+
+It creates a `github-deployer` service account that may deploy only the `medai` service (not `oneevent-backend`), push
+only to the one image repository, and run revisions as the service's own identity; and a trust that accepts tokens from
+`emmapraise/medAi` only. The two GitHub *variables* it sets (`GCP_WORKLOAD_IDENTITY_PROVIDER`, `GCP_SERVICE_ACCOUNT`) are
+IDs, not secrets. Until they exist the deploy job stops at its first step with a message saying so.
+
+**Getting v2 deployed this way:** `main` on GitHub is still v1 and `v2` has not been pushed. Either push `v2` and run
+the workflow on it by hand, or merge `v2` into `main` (that removes v1's `/api/v1/ask`, `/search`, `/ingest` and `/feedback`
+endpoints) and let the push deploy.
+
+**Checked here:** the workflow passes `actionlint`; the setup script passes a dry run and `bash -n`; and the test that
+finds the candidate URL and smoke-tests it was run against the live service (it found the URL, both checks passed, and
+the tag was removed). **Not checked:** the pipeline itself has never run on GitHub, and the setup script has not been run
+for real.
+
+Old images pile up in Artifact Registry (about 875 MB each, with 0.5 GB free); add a cleanup policy that keeps the last
+few when it starts to matter.
+
+## Hugging Face Spaces: needs PRO
+
+The sections below were written for a Hugging Face Space. Creating a Docker Space on the free CPU tier is refused
+(HTTP 402: "hosting Gradio and Docker Spaces on free cpu-basic requires a PRO subscription"), so it was not used.
+Keep them only if you subscribe to PRO. The Qdrant, Neon and image details apply to any host.
+
+Each step below says what was verified locally and what was not.
 
 ## What runs where
 
@@ -83,11 +142,6 @@ one LLM call; serves the UI. See the measured numbers in
 - **Secrets** reach the app as environment variables; confirm in the Space settings that they are set as secrets, not
   public variables.
 - **Not updated for v2:** `docker-compose.yml`, and the README body (it still describes v1).
-
-## Cloud Run instead
-
-The image reads `PORT` (Cloud Run sets it), so `gcloud run deploy --source .` works. Give it at least 1 GiB of memory
-and the same environment variables and secrets. Not tried.
 
 ## Cutting over from v1
 

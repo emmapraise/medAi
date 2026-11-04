@@ -8,7 +8,7 @@ app_port: 7860
 pinned: false
 ---
 
-> **v2 branch.** This header configures the Hugging Face Space (see [docs/DEPLOY.md](docs/DEPLOY.md)); the plan and results are in [docs/V2_PLAN.md](docs/V2_PLAN.md). The sections below still describe v1 and have not been rewritten yet.
+> **v2 branch.** The YAML header is only used by Hugging Face Spaces, which needs a PRO plan for Docker (not used). v2 runs on Cloud Run: see [docs/DEPLOY.md](docs/DEPLOY.md); the plan and results are in [docs/V2_PLAN.md](docs/V2_PLAN.md). The sections below still describe v1 and have not been rewritten yet.
 
 # 🩺 MediQA Bot — AI Medical Intelligence & Self-Corrective RAG (CRAG) PWA
 
