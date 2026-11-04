@@ -8,12 +8,11 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
-from langfuse import get_client
 
+from app.agent import v2
 from app.config import settings
 from app.logging_config import configure_logging
-from app.agent import v2
-from app.routers import analytics, ask_v2, health, ingest, qa, search
+from app.routers import analytics, ask_v2, health
 from app.services.analytics_service import analytics_service
 
 configure_logging()
@@ -28,15 +27,11 @@ async def lifespan(app: FastAPI):
     logger.info("All services ready; accepting requests")
     yield
     logger.info("Shutting down Medical QA Server")
-    try:
-        get_client().flush()
-    except Exception:
-        logger.warning("Langfuse flush failed on shutdown", exc_info=True)
 
 app = FastAPI(
     title=settings.PROJECT_NAME,
     version=settings.VERSION,
-    description="A Production-Ready Medical QA API & React PWA Application with LangGraph CRAG & PostgreSQL Analytics.",
+    description="MediQA v2: medical Q&A from NIH sources with streamed, cited answers, as an API and a React PWA.",
     lifespan=lifespan
 )
 
@@ -49,11 +44,8 @@ app.add_middleware(
 )
 
 # API Routers
-app.include_router(health.router, prefix="/api/v1", tags=["Health"])
-app.include_router(search.router, prefix="/api/v1", tags=["Search"])
-app.include_router(qa.router, prefix="/api/v1", tags=["QA Agent"])
+app.include_router(health.router, prefix="/api/v2", tags=["Health"])
 app.include_router(ask_v2.router, prefix="/api/v2", tags=["QA Agent v2"])
-app.include_router(ingest.router, prefix="/api/v1", tags=["Ingestion"])
 app.include_router(analytics.router, prefix="/api/v1/analytics", tags=["Analytics & Cost Monitoring"])
 
 # --- React PWA (built into frontend/dist) -----------------------------------

@@ -17,8 +17,8 @@ def parse(body: str) -> list[dict]:
 def fake_agent(monkeypatch):
     calls = []
 
-    async def fake_run(question, history=None):
-        calls.append({"question": question, "history": history})
+    async def fake_run(question, history=None, plain=False):
+        calls.append({"question": question, "history": history, "plain": plain})
         cites = [{"n": 1, "question": "What causes Glaucoma ?", "source": "NIH", "focus_area": "Glaucoma", "passage": "p"}]
         yield {"type": "status", "text": "Searching medical sources"}
         yield {"type": "token", "text": "Pressure damages the nerve [1]."}
@@ -100,3 +100,12 @@ def test_general_catch_all_is_not_a_topic(monkeypatch):
     monkeypatch.setattr(ask_v2.v2, "_search", Fake())
     monkeypatch.setattr(ask_v2, "_topics", None)
     assert ask_v2._topic_index() == {"Asthma": ["What causes Asthma ?"]}
+
+
+def test_plain_language_reaches_the_agent_and_has_its_own_cache_entry(client, fake_agent):
+    ask = lambda level, sid: client.post("/api/v2/ask", json={"question": "What causes glaucoma?", "session_id": sid, "reading_level": level})
+    ask("standard", "p1")
+    ask("simple", "p2")   # same question, different level: must not be served the standard answer
+    ask("simple", "p3")   # now it is cached
+    assert [c["plain"] for c in fake_agent] == [False, True]
+    assert client.post("/api/v2/ask", json={"question": "hi", "session_id": "p4", "reading_level": "expert"}).status_code == 422

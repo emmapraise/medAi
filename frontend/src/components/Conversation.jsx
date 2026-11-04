@@ -1,10 +1,21 @@
 import { useEffect, useRef, useState } from "react";
-import { ArrowUp, Square } from "lucide-react";
+import { ArrowUp, Mic, Printer, Square } from "lucide-react";
 import Answer from "./Answer";
 import SourceSheet from "./SourceSheet";
 import { askStream, getSession, sendFeedback } from "../lib/api";
+import { dictationSupported, startDictation } from "../lib/speech";
 
 const NOTICE = "AI-written from NIH sources. It can make mistakes and isn't medical advice. In an emergency, call your local emergency number.";
+
+const PLAIN_KEY = "mediqa.plain";
+
+function readPlain() {
+  try {
+    return localStorage.getItem(PLAIN_KEY) === "1";
+  } catch {
+    return false; // storage can be unavailable (private mode); the switch just will not be remembered
+  }
+}
 
 const STARTERS = [
   "What are the symptoms of glaucoma?",
@@ -34,6 +45,10 @@ export default function Conversation({ sessionId, queued, onQueuedHandled, onAsk
   const [busy, setBusy] = useState(false);
   const [loadingHistory, setLoadingHistory] = useState(true);
   const [sheet, setSheet] = useState(null); // { entryId, n }
+  const [plain, setPlain] = useState(readPlain);
+  const [listening, setListening] = useState(false);
+  const [voiceNote, setVoiceNote] = useState("");
+  const stopDictation = useRef(null);
   const controller = useRef(null);
   const feed = useRef(null);
   const field = useRef(null);
@@ -48,6 +63,7 @@ export default function Conversation({ sessionId, queued, onQueuedHandled, onAsk
     return () => {
       active = false;
       controller.current?.abort();
+      stopDictation.current?.();
     };
   }, [sessionId]);
 
@@ -70,6 +86,7 @@ export default function Conversation({ sessionId, queued, onQueuedHandled, onAsk
     const id = crypto.randomUUID();
     const ctl = new AbortController();
     controller.current = ctl;
+    stopDictation.current?.();
     stick.current = true;
     setBusy(true);
     setInput("");
@@ -77,7 +94,7 @@ export default function Conversation({ sessionId, queued, onQueuedHandled, onAsk
 
     let finished = false;
     try {
-      for await (const ev of askStream(question, sessionId, ctl.signal)) {
+      for await (const ev of askStream(question, sessionId, ctl.signal, plain)) {
         if (ev.type === "status") update(id, { status: ev.text });
         else if (ev.type === "token") update(id, (e) => ({ answer: e.answer + ev.text }));
         else if (ev.type === "citations") update(id, { citations: ev.items });
@@ -123,6 +140,29 @@ export default function Conversation({ sessionId, queued, onQueuedHandled, onAsk
     field.current.focus();
   };
 
+  const togglePlain = (on) => {
+    setPlain(on);
+    try {
+      localStorage.setItem(PLAIN_KEY, on ? "1" : "0");
+    } catch {
+      /* not remembered; fine */
+    }
+  };
+
+  const toggleVoice = () => {
+    if (listening) return stopDictation.current?.();
+    const base = input.trim();
+    setVoiceNote("");
+    setListening(true);
+    stopDictation.current = startDictation({
+      onText: (text) => setInput(base ? `${base} ${text}` : text),
+      onEnd: (error) => {
+        setListening(false);
+        setVoiceNote(error);
+      },
+    });
+  };
+
   const onKeyDown = (e) => {
     if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
       e.preventDefault();
@@ -135,8 +175,23 @@ export default function Conversation({ sessionId, queued, onQueuedHandled, onAsk
 
   return (
     <div className="conversation">
+      <div className="convo-bar">
+        <label className="switch">
+          <input type="checkbox" role="switch" checked={plain} onChange={(e) => togglePlain(e.target.checked)} />
+          Plain language
+        </label>
+        {entries.some((e) => e.state === "done" && e.answer) && (
+          <button type="button" className="tool" onClick={() => window.print()}>
+            <Printer size={18} aria-hidden="true" /> Save as PDF
+          </button>
+        )}
+      </div>
       <div className="feed" ref={feed} onScroll={(e) => { const el = e.currentTarget; stick.current = el.scrollHeight - el.scrollTop - el.clientHeight < 120; }}>
         <div className="column">
+          <header className="print-only print-head">
+            <h1>MediQA conversation</h1>
+            <p>{new Date().toLocaleDateString(undefined, { dateStyle: "long" })}. {NOTICE}</p>
+          </header>
           {!loadingHistory && entries.length === 0 && (
             <section className="welcome">
               <h1>Ask about a health topic</h1>
@@ -184,6 +239,12 @@ export default function Conversation({ sessionId, queued, onQueuedHandled, onAsk
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={onKeyDown}
           />
+          {dictationSupported() && !busy && (
+            <button type="button" className={`tool icon-only mic ${listening ? "is-listening" : ""}`} aria-pressed={listening}
+              aria-label={listening ? "Stop dictation" : "Dictate your question"} onClick={toggleVoice}>
+              <Mic size={20} aria-hidden="true" />
+            </button>
+          )}
           {busy ? (
             <button type="button" className="send" onClick={() => controller.current?.abort()} aria-label="Stop answering">
               <Square size={16} fill="currentColor" aria-hidden="true" />
@@ -194,6 +255,8 @@ export default function Conversation({ sessionId, queued, onQueuedHandled, onAsk
             </button>
           )}
         </form>
+        {listening && <p className="fine" role="status">Listening… your browser's speech service may process your voice.</p>}
+        {voiceNote && <p className="fine voice-error" role="alert">{voiceNote}</p>}
         <p className="fine composer-fine">{NOTICE}</p>
       </div>
 

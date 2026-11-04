@@ -35,8 +35,8 @@ export function sendFeedback({ logId, positive }) {
 }
 
 /** Server-sent events from POST /api/v2/ask, as an async iterator of parsed event objects. */
-export async function* askStream(question, sessionId, signal) {
-  const res = await fetch(`${V2}/ask`, json("POST", { question, session_id: sessionId }, signal));
+export async function* askStream(question, sessionId, signal, plain = false) {
+  const res = await fetch(`${V2}/ask`, json("POST", { question, session_id: sessionId, reading_level: plain ? "simple" : "standard" }, signal));
   if (!res.ok) throw await failure(res);
 
   const reader = res.body.getReader();

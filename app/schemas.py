@@ -25,6 +25,7 @@ class AskRequest(BaseModel):
     session_id: str | None = Field(default="default_session", pattern=r"^[A-Za-z0-9_-]{1,64}$", description="Session ID for follow-up questions", examples=["3f9c1c2e-5b7a-4a52-9e0d-6a1d7f0b2c11"])
     model: str | None = Field(default=None, description="LLM model name to use (defaults to gemini-2.5-flash)")
     max_turns: int | None = Field(default=5, description="Maximum agent tool iterations", ge=1, le=10)
+    reading_level: Literal["standard", "simple"] = Field(default="standard", description="v2 only: 'simple' asks for plain, 6th-grade language")
 
 class AskResponse(BaseModel):
     id: int | None = Field(default=None, description="Query log ID for user feedback tracking")

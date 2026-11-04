@@ -44,7 +44,7 @@ def test_answer_streams_one_llm_call_and_returns_only_cited_sources(monkeypatch)
             d = lambda n: {"question": f"Q{n}", "source": "GARD", "focus_area": "Glaucoma", "chunk": f"passage {n}"}
             return [d(1), d(2)], 0.9
 
-    async def fake_llm(prompt, history):
+    async def fake_llm(prompt, history, plain=False):
         yield "Glaucoma harms the optic nerve [2].\n===FOLLOWUPS===\nIs it inherited?\n", None
         yield "", (100, 20)
     monkeypatch.setattr(v2, "_search", Fake())
@@ -70,3 +70,9 @@ def test_emergency_gets_fixed_reply_with_no_search_and_no_llm(monkeypatch):
     final = collect(v2.run("I have crushing chest pain spreading to my left arm"))[-1]
     assert final["safety"] == "emergency" and final["llm_calls"] == 0 and "emergency number" in final["answer"]
     assert final["disclaimer"]
+
+
+def test_plain_language_adds_a_reading_level_rule_only_when_asked():
+    assert "6th-grade" in v2._system(True) and "6th-grade" not in v2._system(False)
+    assert "{extra}" not in v2._system(True) and "{extra}" not in v2._system(False)
+    assert v2._system(True).rstrip().endswith("no numbering.")  # the follow-up instruction is still last

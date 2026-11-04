@@ -19,7 +19,7 @@ PATTERNS = {
     ],
     "emergency": [
         rf"\b{_WHO}\b.{{0,25}}\b(?:can'?t|cannot|unable to) breathe\b|\bnot breathing\b|\bstopped breathing\b|\blips? (?:are |is )?(?:turning |going )?blue\b",
-        rf"\bchest (?:pain|pressure|tightness)\b.{{0,60}}\b(?:arm|jaw|crushing|sweat\w*|spreading|radiat\w*)\b|\bcrushing chest\b",
+        r"\bchest (?:pain|pressure|tightness)\b.{0,60}\b(?:arm|jaw|crushing|sweat\w*|spreading|radiat\w*)\b|\bcrushing chest\b",
         r"\bface\b.{0,20}\b(?:droop\w*|sagging)\b|\bslurred speech\b|\b(?:can'?t|cannot) (?:speak|talk)\b.{0,20}\b(?:clearly|properly)\b",
         rf"\b{_WHO}\b.{{0,15}}\b(?:having|had) a seizure\b|\bseizure\b.{{0,25}}\bwon'?t stop\b",
         r"\bbleeding\b.{0,30}\b(?:heavily|won'?t stop|can'?t stop|a lot)\b|\b(?:won'?t|can'?t|cannot) stop bleeding\b",

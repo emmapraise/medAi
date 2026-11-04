@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Check, Copy, Info, LifeBuoy, Pencil, RotateCcw, SearchX, Siren, Stethoscope, ThumbsDown, ThumbsUp } from "lucide-react";
 import RichText from "./RichText";
+import { tidyQuestion } from "../lib/format";
 
 // Safety and "not found" replies are not answers, so they are not styled like answers.
 const NOTICES = {
@@ -101,6 +102,12 @@ export default function Answer({ entry, isLast, onCite, onAsk, onEdit, onRetry, 
               ))}
             </ul>
           </nav>
+        )}
+
+        {finished && !kind && citations.length > 0 && (
+          <ol className="print-only print-sources" aria-hidden="true">
+            {citations.map((c) => <li key={c.n}>[{c.n}] {c.source}: {tidyQuestion(c.question)}</li>)}
+          </ol>
         )}
 
         {finished && !entry.safety && entry.logId && (

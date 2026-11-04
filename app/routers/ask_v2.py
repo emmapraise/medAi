@@ -10,21 +10,25 @@ import logging
 
 from fastapi import APIRouter, Depends, Query
 from fastapi.responses import StreamingResponse
+from qdrant_client import models
 
 from app.agent import v2
 from app.config import settings
 from app.core.cache import generate_cache_key, qa_cache
+from app.core.rate_limiter import RateLimiter
 from app.db import SessionLocal
 from app.models import RAGQueryLog
 from app.routers.analytics import analytics_rate_limiter
-from app.routers.qa import qa_rate_limiter
 from app.schemas import AskRequest
 from app.services.analytics_service import analytics_service
 from app.services.search_v2 import COLLECTION
-from qdrant_client import models
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
+
+qa_rate_limiter = RateLimiter(
+    times=settings.RATE_LIMIT_QA_TIMES, seconds=settings.RATE_LIMIT_QA_SECONDS, namespace="qa_ask", enabled=settings.RATE_LIMIT_ENABLED
+)
 
 HISTORY_TURNS = 3
 
@@ -73,9 +77,9 @@ async def _stream(payload: AskRequest):
     sid, question = payload.session_id, payload.question
     history = await asyncio.to_thread(_history, sid)
     # Only first-turn questions are cached: a follow-up's meaning depends on the conversation.
-    key = None if history or not settings.CACHE_ENABLED else generate_cache_key(v="v2", question=" ".join(question.lower().split()))
+    key = None if history or not settings.CACHE_ENABLED else generate_cache_key(v="v2", level=payload.reading_level, question=" ".join(question.lower().split()))
     cached = qa_cache.get(key) if key else None
-    async for ev in (_replay(cached) if cached else v2.run(question, history)):
+    async for ev in (_replay(cached) if cached else v2.run(question, history, payload.reading_level == "simple")):
         if ev["type"] == "done":
             ev = await asyncio.to_thread(_save, sid, question, ev)
             if key and not cached and ev["llm_calls"] and not ev["abstained"] and not ev["safety"]:

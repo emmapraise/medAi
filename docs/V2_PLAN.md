@@ -191,3 +191,24 @@ HIG review of the result (measured):
 - 375px width: no horizontal overflow. 200% text: no overflow; on short or large-text screens the composer stacks (full-width input, send below) and the long notice moves from the pinned composer into the feed so the answer keeps the room.
 - Verified live in the browser (real backend + OpenAI): streamed answer, citations, sheet (bottom and side), Esc, Close, grabber toggle, topics list and search, emergency notice, cached replay, wide layout in light mode, dark mode on phone.
 Not done / not verified: bookmarks, share/export (copy only), offline cache of past conversations, feedback "reason", onboarding; swipe-down dismissal (code written, only the state logic was exercised), increased-contrast mode, VoiceOver and a real iPhone, a persisted partial answer when Stop is pressed (only completed answers are saved server-side), Postgres (SQLite only). Source passages are raw MedQuAD text (some contain page boilerplate like "Watch the animated video...").
+
+## Phase 6 status — extras
+
+Built (the three that are cheap and clearly useful):
+- **Plain language**: a real `role="switch"` above the chat (remembered in localStorage). `AskRequest.reading_level` ("standard" | "simple") adds a 6th-grade-reading-level rule to the system prompt; the first-turn cache is keyed by level so the two never mix. Live: same question, simpler list-style answer.
+- **Voice input**: a mic button using the browser's SpeechRecognition, shown only where the browser has it; fills the text box (nothing is sent until you press send); shows "Listening… your browser's speech service may process your voice" while active, and a plain message if the mic is blocked. The browser asks for microphone permission itself.
+- **Save as PDF**: uses the browser's print dialog. A print stylesheet turns the conversation into a document: dated header with the notice, each question and answer, citations as superscripts, sources listed as text; nav, buttons and composer are hidden. Verified with print-media emulation.
+Tests: 2 new (reading level reaches the agent, separate cache entry, invalid level rejected; the prompt rule is added only when asked). Suite: 65 passing.
+Not verified: dictation with a real microphone (only that the button appears, toggles and the API exists); the real print dialog and its page margins.
+Not built: **multilingual answers** (retrieval is English-only, so it needs a translate-the-query step and its own eval, not just a prompt line), **admin dashboard** (`GET /api/v1/analytics/summary` already returns the numbers as JSON).
+
+## Auth — paused
+
+Email + password and Google sign-in were started and are **not** in the branch: stashed as `stash@{0}` ("WIP auth (paused)"). Contents: users and login-session tables (token stored hashed), argon2id passwords, Google OIDC with PKCE, ownership checks on ask/list/history/delete, claim-anonymous-chats, account deletion, `tests/test_auth.py`. The full suite had passed (63) before the last test edit; the auth tests themselves had not been run to completion. Resume with `git stash pop`. Needs from you: `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_REDIRECT_URI` (OAuth client from Google Cloud console) and a decision on password reset (needs an email provider).
+
+## v1 unloaded from the app (memory)
+
+Cause found by measuring: `import main` pulled in torch (via sentence-transformers) because `main.py` mounted the v1 routers, `app/agent/__init__.py` built the v1 agent eagerly, and `ask_v2` borrowed its rate limiter from the v1 `qa` router. Peak RSS (import + warm-up + one search): **847 MB -> 523 MB**. A running server process after start-up, a health check, the topic index and one chat request: **440 MB**. The "under 300 MB" goal is still not met; plan on a 512 MB host at the very least (1 GB for headroom).
+Removed (still in git history): `app/agent/{service,nodes,workflow,llm_client,state}.py`, `app/services/agent_service.py`, routers `qa`, `search`, `ingest`. Kept: `app/services/search_service.py` (only for the v1 baseline in `eval/run_retrieval.py v1`). Rewritten: `GET /api/v2/health` (reads the v2 index). Gone from the API: `/api/v1/ask`, `/api/v1/search`, `/api/v1/ingest`, `/api/v1/feedback` (Langfuse), `/api/v1/health`; `/api/v1/analytics/*` stays (the UI uses it). `make ingest` now builds the v2 index.
+Bug fixed on the way: when the agent failed, `v2.run` put the raw exception text into the SSE `error` event (could include connection details). It is now logged on the server and the browser gets a fixed message (test added; it replaces the v1 "errors do not leak internals" test).
+Not done: the dependencies (torch, transformers, sentence-transformers, pandas, langchain*, langgraph, langfuse, ...) are still in `pyproject.toml`, so the Docker image would still install ~1 GB it never loads. Remove them in Phase 7 together with the Dockerfile rewrite (the Dockerfile still bakes the old PubMedBERT model).
