@@ -30,13 +30,20 @@ export const deleteSession = (id) => request(`${V1}/analytics/sessions/${encodeU
 
 export const getTopics = (q, signal) => request(`${V2}/topics?q=${encodeURIComponent(q)}`, { signal });
 
+// Read-only share links. The token in a link is not the conversation's id (the id would also allow writing and deleting).
+const shareUrl = (id) => `${V2}/sessions/${encodeURIComponent(id)}/share`;
+export const getShare = (id) => request(shareUrl(id));
+export const createShare = (id) => request(shareUrl(id), { method: "POST" });
+export const stopShare = (id) => request(shareUrl(id), { method: "DELETE" });
+export const getShared = (token) => request(`${V2}/shared/${encodeURIComponent(token)}`);
+
 export function sendFeedback({ logId, positive }) {
   return request(`${V1}/analytics/feedback`, json("POST", { log_id: logId, feedback: positive ? "positive" : "negative" }));
 }
 
 /** Server-sent events from POST /api/v2/ask, as an async iterator of parsed event objects. */
-export async function* askStream(question, sessionId, signal, plain = false) {
-  const res = await fetch(`${V2}/ask`, json("POST", { question, session_id: sessionId, reading_level: plain ? "simple" : "standard" }, signal));
+export async function* askStream(question, sessionId, signal) {
+  const res = await fetch(`${V2}/ask`, json("POST", { question, session_id: sessionId }, signal));
   if (!res.ok) throw await failure(res);
 
   const reader = res.body.getReader();

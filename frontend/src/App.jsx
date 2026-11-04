@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { Download, Plus } from "lucide-react";
 import Conversation from "./components/Conversation";
 import SessionList from "./components/SessionList";
+import SharedView from "./components/SharedView";
 import Topics from "./components/Topics";
 import { Sidebar, TabBar } from "./components/Nav";
 import { deleteSession, listSessions } from "./lib/api";
@@ -21,7 +22,7 @@ function useMedia(query) {
   return matches;
 }
 
-export default function App() {
+function Workspace() {
   const wide = useMedia(WIDE);
   const [tab, setTab] = useState("ask");
   const [sessionId, setSessionId] = useState(newSessionId);
@@ -138,4 +139,11 @@ export default function App() {
       </div>
     </div>
   );
+}
+
+const SHARED_PATH = /^\/s\/([A-Za-z0-9_-]{16,64})\/?$/;
+
+export default function App() {
+  const shared = window.location.pathname.match(SHARED_PATH);
+  return shared ? <SharedView token={shared[1]} /> : <Workspace />;
 }
