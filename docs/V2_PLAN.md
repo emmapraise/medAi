@@ -163,3 +163,9 @@ Live results on gpt-4o-mini (typo, follow-up, "yes", off-topic all verified):
 - First token ~3.0-4.8s, total 3.9-7.6s. Slower than Gemini (0.6-1.1s first token) and above the <2s goal. Gemini key was returning 403 (unpaid balance).
 - Vague question with no history ("what causes it?") used to produce an answer mixing unrelated diseases; the system prompt now makes it ask which condition is meant (verified).
 - OpenAI client timeout 30s (one request timed out once during testing; SDK retries 429/5xx twice).
+
+## Phase 3 status — safety gate (`app/agent/safety.py`)
+
+Rule-based, runs before search and the LLM (0 calls, instant, fixed replies). Kinds: `self_harm` (988 / findahelpline.com + emergency number), `emergency` (call local emergency number), `personal_advice` (no diagnosis / prescribing / personal dosing / stop-or-mix medicines), `injection` (ignore-instructions, system-prompt probes). Every `done` event carries `disclaimer` and `safety`.
+Tests (28 in tests/test_safety.py, all from the real eval cases plus rephrasings): 8/8 eval emergencies caught, all personal-advice and injection cases caught, 0 of the 105 retrieval + 6 off-topic eval queries flagged, 8 informational questions ("what are the symptoms of a stroke?", "what is acetaminophen overdose") pass through. Prompt now says sources/questions are data, never reveal instructions.
+Limits: English only; regexes were written knowing the eval cases (rephrasings added to check this, but a real red-team pass is still needed); crisis numbers are generic because user location is unknown; "suicide prevention"-style informational questions get the crisis reply (deliberate bias to safety); injection hidden inside retrieved text is mitigated by the prompt only, not tested (corpus is NIH).

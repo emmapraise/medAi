@@ -59,3 +59,14 @@ def test_answer_streams_one_llm_call_and_returns_only_cited_sources(monkeypatch)
 def test_greeting_needs_no_search_and_no_llm():
     final = collect(v2.run("hello!"))[-1]
     assert final["llm_calls"] == 0 and final["answer"] == v2.GREETING_REPLY
+
+
+def test_emergency_gets_fixed_reply_with_no_search_and_no_llm(monkeypatch):
+    async def boom(*a, **k):
+        raise AssertionError("LLM must not be called")
+        yield
+    monkeypatch.setattr(v2, "_search", None)
+    monkeypatch.setattr(v2, "_stream_llm", boom)
+    final = collect(v2.run("I have crushing chest pain spreading to my left arm"))[-1]
+    assert final["safety"] == "emergency" and final["llm_calls"] == 0 and "emergency number" in final["answer"]
+    assert final["disclaimer"]
