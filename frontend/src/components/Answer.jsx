@@ -1,7 +1,6 @@
 import { useState } from "react";
 import { Check, Copy, Info, LifeBuoy, Pencil, RotateCcw, SearchX, Siren, Stethoscope, ThumbsDown, ThumbsUp } from "lucide-react";
 import RichText from "./RichText";
-import { tidyQuestion } from "../lib/format";
 
 // Safety and "not found" replies are not answers, so they are not styled like answers.
 const NOTICES = {
@@ -25,7 +24,7 @@ function Notice({ kind, children }) {
   );
 }
 
-export default function Answer({ entry, isLast, onCite, onAsk, onEdit, onRetry, onFeedback }) {
+export default function Answer({ entry, isLast, onCite, onAsk, onEdit, onRetry, onFeedback, readOnly = false }) {
   const [copied, setCopied] = useState(false);
   const { state, answer, citations, followups, feedback } = entry;
   const kind = entry.safety || (entry.abstained ? "notfound" : null);
@@ -48,7 +47,7 @@ export default function Answer({ entry, isLast, onCite, onAsk, onEdit, onRetry, 
           <span className="sr-only">You asked: </span>
           {entry.question}
         </h2>
-        {!entry.safety && (
+        {!entry.safety && !readOnly && (
           <button type="button" className="tool icon-only" onClick={() => onEdit(entry.question)} aria-label="Edit this question">
             <Pencil size={18} aria-hidden="true" />
           </button>
@@ -104,13 +103,7 @@ export default function Answer({ entry, isLast, onCite, onAsk, onEdit, onRetry, 
           </nav>
         )}
 
-        {finished && !kind && citations.length > 0 && (
-          <ol className="print-only print-sources" aria-hidden="true">
-            {citations.map((c) => <li key={c.n}>[{c.n}] {c.source}: {tidyQuestion(c.question)}</li>)}
-          </ol>
-        )}
-
-        {finished && !entry.safety && entry.logId && (
+        {!readOnly && finished && !entry.safety && !!entry.logId && (
           <div className="actions" role="group" aria-label="Answer actions">
             <button type="button" className={`tool icon-only ${feedback === "positive" ? "is-on" : ""}`} aria-pressed={feedback === "positive"}
               aria-label="Helpful" onClick={() => onFeedback(entry, true)}>
@@ -129,7 +122,7 @@ export default function Answer({ entry, isLast, onCite, onAsk, onEdit, onRetry, 
           </div>
         )}
 
-        {finished && isLast && followups?.length > 0 && !entry.safety && (
+        {!readOnly && finished && isLast && followups?.length > 0 && !entry.safety && (
           <section aria-label="Suggested follow-up questions">
             <ul className="followups">
               {followups.map((q) => (

@@ -77,9 +77,9 @@ async def _stream(payload: AskRequest):
     sid, question = payload.session_id, payload.question
     history = await asyncio.to_thread(_history, sid)
     # Only first-turn questions are cached: a follow-up's meaning depends on the conversation.
-    key = None if history or not settings.CACHE_ENABLED else generate_cache_key(v="v2", level=payload.reading_level, question=" ".join(question.lower().split()))
+    key = None if history or not settings.CACHE_ENABLED else generate_cache_key(v="v2", question=" ".join(question.lower().split()))
     cached = qa_cache.get(key) if key else None
-    async for ev in (_replay(cached) if cached else v2.run(question, history, payload.reading_level == "simple")):
+    async for ev in (_replay(cached) if cached else v2.run(question, history)):
         if ev["type"] == "done":
             ev = await asyncio.to_thread(_save, sid, question, ev)
             if key and not cached and ev["llm_calls"] and not ev["abstained"] and not ev["safety"]:

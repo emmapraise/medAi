@@ -12,7 +12,7 @@ from fastapi.staticfiles import StaticFiles
 from app.agent import v2
 from app.config import settings
 from app.logging_config import configure_logging
-from app.routers import analytics, ask_v2, health
+from app.routers import analytics, ask_v2, health, share
 from app.services.analytics_service import analytics_service
 
 configure_logging()
@@ -46,6 +46,7 @@ app.add_middleware(
 # API Routers
 app.include_router(health.router, prefix="/api/v2", tags=["Health"])
 app.include_router(ask_v2.router, prefix="/api/v2", tags=["QA Agent v2"])
+app.include_router(share.router, prefix="/api/v2", tags=["Sharing"])
 app.include_router(analytics.router, prefix="/api/v1/analytics", tags=["Analytics & Cost Monitoring"])
 
 # --- React PWA (built into frontend/dist) -----------------------------------
@@ -82,6 +83,16 @@ for _path, _type in PWA_FILES.items():
 def liveness():
     """Cheap liveness probe for container orchestrators (no dependency checks)."""
     return {"status": "ok"}
+
+
+@app.get("/s/{token}", include_in_schema=False)
+def shared_page(token: str):
+    """A shared conversation is the same single-page app; it reads the token from the URL and asks the API for the content."""
+    index = DIST_DIR / "index.html"
+    if not index.is_file():
+        raise HTTPException(status_code=404, detail="Not found")
+    # Not for search engines, and the link must not leak to other sites through the Referer header.
+    return FileResponse(index, headers={"X-Robots-Tag": "noindex, nofollow", "Referrer-Policy": "no-referrer", "Cache-Control": "no-cache"})
 
 
 @app.get("/", include_in_schema=False)

@@ -3,12 +3,18 @@
 ## Where it actually runs: Cloud Run
 
 **https://medai-19247955175.europe-west1.run.app** (service `medai`, project `oneevent-485310`, europe-west1; public).
-1 GiB memory, 1 CPU, 0 to 3 instances, 300 s timeout. The OpenAI key, Qdrant key and Neon URL are Secret Manager secrets
+1 GiB memory, 1 CPU, 0 to **1** instance, 300 s timeout. The OpenAI key, Qdrant key and Neon URL are Secret Manager secrets
 (`mediqa-openai-key`, `mediqa-qdrant-key`, `mediqa-database-url`); the Qdrant cluster URL is a plain variable. The index
 is the `mediqa_v2` collection on the Qdrant Cloud cluster (47,478 points, copied from the local one in about 16 minutes;
 v1's `medical_knowledge_base_hybrid` collection sits next to it, untouched). The database is the Neon `medical_db` that
 v1 used: v2 only adds one optional column, `rag_query_logs.extra`, and v1's rows are untouched.
 
+- **Never more than one instance, on purpose** (`--max-instances 1`). The answer cache and the per-visitor rate limit live in
+  the memory of one process, so with a single instance they are exact; with several, each instance would count on its own
+  and the limit would multiply. It also caps the worst-case OpenAI spend. The cost: one 1 CPU instance serves up to 80
+  requests at once, and past that requests wait or fail, which is fine for a demo. Change it with
+  `gcloud run services update medai --project oneevent-485310 --region europe-west1 --max-instances N` (and then move the
+  cache and the limiter out of memory, e.g. to Redis, before going above 1).
 - **Redeploy by hand, if the pipeline is not set up or is down** (keeps the settings, secrets and variables already on the service):
   `gcloud run deploy medai --project oneevent-485310 --region europe-west1 --source .`
 - **Take it offline:** `gcloud run services remove-iam-policy-binding medai --project oneevent-485310 --region europe-west1 --member=allUsers --role=roles/run.invoker`
@@ -53,6 +59,15 @@ for real.
 
 Old images pile up in Artifact Registry (about 875 MB each, with 0.5 GB free); add a cleanup policy that keeps the last
 few when it starts to matter.
+
+## Admin Hub: daily counts and the summary email
+
+MediQA reports daily counts to the owner's Admin Hub and emails a daily summary through it (`app/services/hub.py`). Counts only: never questions, answers or feedback comments. MediQA has no accounts, so "users" are visitor sessions.
+
+1. In the hub: open the **MediQA** app, create a **live** key (Keys tab), and on the Integrations tab turn on **Resend** and set the sender (an address on a domain verified in Resend).
+2. On Cloud Run set `HUB_URL` (the hub's address), `HUB_KEY` (as a secret, e.g. `mediqa-hub-key`) and `REPORT_EMAIL` (who gets the summary; comma-separated). Without `HUB_URL`/`HUB_KEY` nothing is sent.
+3. Call it once a day, for example with Cloud Scheduler: `POST https://<service-url>/api/v1/analytics/hub/report` with the header `X-API-Key: <ADMIN_API_KEY>`. It sends the last 2 days of counts (`?days=14` backfills) and then yesterday's summary email; sending the same day's email twice sends once.
+4. An `hk_test_` key only records the email in the hub (nothing is delivered); use `hk_live_` for real mail.
 
 ## Hugging Face Spaces: needs PRO
 
