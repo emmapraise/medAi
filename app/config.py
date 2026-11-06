@@ -39,6 +39,12 @@ class Settings:
     OPENAI_API_KEY: str | None = os.getenv("OPENAI_API_KEY")
     DEFAULT_MODEL: str = os.getenv("DEFAULT_MODEL", "gemini-2.5-flash")
 
+    # Admin Hub (the owner's portal): daily counts and the email digest go through it. Unset = nothing is sent.
+    HUB_URL: str | None = os.getenv("HUB_URL")
+    HUB_KEY: str | None = os.getenv("HUB_KEY")
+    # Who gets the daily summary email (comma-separated). Unset = no email.
+    REPORT_EMAIL: list[str] = [e.strip() for e in os.getenv("REPORT_EMAIL", "").split(",") if e.strip()]
+
     # Langfuse Observability & Tracing Configuration
     LANGFUSE_PUBLIC_KEY: str | None = os.getenv("LANGFUSE_PUBLIC_KEY")
     LANGFUSE_SECRET_KEY: str | None = os.getenv("LANGFUSE_SECRET_KEY")

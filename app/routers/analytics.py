@@ -13,6 +13,7 @@ from app.core.security import require_admin
 from app.db import get_db
 from app.models import ConversationSession, RAGQueryLog
 from app.schemas import AnalyticsFeedbackRequest, AnalyticsFeedbackResponse, CacheStatsResponse
+from app.services import hub
 from app.services.analytics_service import analytics_service
 
 logger = logging.getLogger(__name__)
@@ -208,3 +209,12 @@ def delete_session(session_id: SessionIdPath, db: DbSession):
         logger.exception("Deleting session failed")
         raise HTTPException(status_code=500, detail="Could not delete the conversation.") from None
     return {"session_id": session_id, "deleted_count": deleted_count, "status": "success"}
+
+
+@router.post(
+    "/hub/report",
+    summary="Send daily counts to Admin Hub and email the daily summary (admin; call from a daily scheduler)",
+    dependencies=[Depends(require_admin), Depends(analytics_rate_limiter)]
+)
+def report_to_hub(days: Annotated[int, Query(ge=1, le=90)] = 2):
+    return hub.run(days)
