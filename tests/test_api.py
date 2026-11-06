@@ -16,6 +16,7 @@ def _seed_session(session_id: str, question: str) -> None:
 
 def test_liveness(client):
     assert client.get("/healthz").json() == {"status": "ok"}
+    assert client.get("/health").json() == {"status": "ok"}
 
 
 # --- admin protection ---------------------------------------------------------

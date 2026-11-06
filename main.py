@@ -80,8 +80,9 @@ for _path, _type in PWA_FILES.items():
 
 
 @app.get("/healthz", include_in_schema=False)
+@app.get("/health", include_in_schema=False)  # the name Admin Hub's "Check the app now" looks for
 def liveness():
-    """Cheap liveness probe for container orchestrators (no dependency checks)."""
+    """Cheap liveness probe for container orchestrators and Admin Hub (no dependency checks)."""
     return {"status": "ok"}
 
 
